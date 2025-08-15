@@ -81,7 +81,7 @@ export function wrapWithSimulatedFunctionCalling({
     } else if (toolChoice === ToolChoiceType.required) {
       selectionMessage = `Remember, you MUST use one of the provided tool to answer this question.`;
     } else if (toolChoice === ToolChoiceType.auto) {
-      selectionMessage = `Remember, you CAN use one of the provided tool to answer this question.`;
+      selectionMessage = `Remember, you CAN use one of the provided tool to answer this question, if needed.`;
     }
 
     if (selectionMessage) {
