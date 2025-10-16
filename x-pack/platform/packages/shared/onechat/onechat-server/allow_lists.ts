@@ -9,13 +9,19 @@
  * This is a manually maintained list of all built-in tools registered in Agent Builder.
  * The intention is to force a code review from the Agent Builder team when any team adds a new tool.
  */
-export const AGENT_BUILDER_BUILTIN_TOOLS: string[] = [];
+export const AGENT_BUILDER_BUILTIN_TOOLS: string[] = [
+  'solution.observability.get_services',
+  'solution.observability.get_service_health',
+  'solution.observability.get_root_cause_candidates',
+  'solution.observability.get_related_logs',
+  'solution.observability.get_deploy_markers',
+];
 
 /**
  * This is a manually maintained list of all built-in agents registered in Agent Builder.
  * The intention is to force a code review from the Agent Builder team when any team adds a new agent.
  */
-export const AGENT_BUILDER_BUILTIN_AGENTS: string[] = [];
+export const AGENT_BUILDER_BUILTIN_AGENTS: string[] = ['solution.observability.agent'];
 
 export const isAllowedBuiltinTool = (toolName: string) => {
   return AGENT_BUILDER_BUILTIN_TOOLS.includes(toolName);

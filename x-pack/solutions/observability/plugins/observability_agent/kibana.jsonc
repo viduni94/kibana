@@ -1,0 +1,17 @@
+{
+  "type": "plugin",
+  "id": "@kbn/observability-agent-plugin",
+  "owner": "@elastic/observability-ai",
+  "group": "observability",
+  "version": "0.0.1",
+  "server": true,
+  "ui": false,
+  "plugin": {
+    "id": "observabilityAgent",
+    "configPath": ["xpack", "observabilityAgent"],
+    "server": true,
+    "browser": false,
+    "requiredPlugins": ["onechat"],
+    "optionalPlugins": ["cloud", "spaces", "licensing"]
+  }
+}
