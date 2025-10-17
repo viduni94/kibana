@@ -1,6 +1,6 @@
 # Observability Agent (Onechat)
 
-This plugin provides a built-in Observability Agent and RCA-focused tools for Kibana Agent Builder (Onechat).
+This plugin provides a built-in Observability Agent.
 
 - Agent ID: `solution.observability.agent`
 - Tools:
@@ -9,12 +9,3 @@ This plugin provides a built-in Observability Agent and RCA-focused tools for Ki
   - `solution.observability.get_root_cause_candidates`
   - `solution.observability.get_related_logs`
   - `solution.observability.get_deploy_markers`
-
-Enable Agent Builder UI in development:
-
-```yml
-uiSettings.overrides:
-  agentBuilder:enabled: true
-```
-
-The agent and tools are exposed automatically via MCP (`/api/agent_builder/mcp`) and A2A (`/api/agent_builder/a2a`).

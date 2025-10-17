@@ -5,10 +5,16 @@
  * 2.0.
  */
 
-import type { OnechatPluginSetup } from '@kbn/onechat-plugin/server';
-import { ToolType } from '@kbn/onechat-common';
+import { ToolType, platformCoreTools } from '@kbn/onechat-common';
 import { ToolResultType } from '@kbn/onechat-common/tools/tool_result';
 import { z } from '@kbn/zod';
+import type { CoreSetup } from '@kbn/core/server';
+import type { Logger } from '@kbn/logging';
+import type {
+  ObservabilityAgentPluginSetupDependencies,
+  ObservabilityAgentPluginStart,
+  ObservabilityAgentPluginStartDependencies,
+} from './plugin';
 
 const NAMESPACE = 'solution.observability';
 
@@ -22,8 +28,17 @@ export const TOOL_GET_DEPLOY_MARKERS = `${NAMESPACE}.get_deploy_markers`;
 // Agent ID
 export const OBS_AGENT_ID = `${NAMESPACE}.agent`;
 
-export function registerObservabilityAgent(onechat: OnechatPluginSetup) {
-  // Register tools (builtin) — minimal functional skeletons
+export function registerObservabilityAgent({
+  core,
+  plugins,
+  logger,
+}: {
+  core: CoreSetup<ObservabilityAgentPluginStartDependencies, ObservabilityAgentPluginStart>;
+  plugins: ObservabilityAgentPluginSetupDependencies;
+  logger: Logger;
+}) {
+  const { onechat } = plugins;
+
   onechat.tools.register({
     id: TOOL_GET_SERVICES,
     type: ToolType.builtin,
@@ -61,7 +76,7 @@ export function registerObservabilityAgent(onechat: OnechatPluginSetup) {
       return {
         results: [
           {
-            type: ToolResultType.tabular_data,
+            type: ToolResultType.tabularData,
             data: { columns: ['time', 'latencyP95', 'errorRate', 'tps'], rows: [] },
           },
         ],
@@ -108,7 +123,7 @@ export function registerObservabilityAgent(onechat: OnechatPluginSetup) {
       return {
         results: [
           {
-            type: ToolResultType.tabular_data,
+            type: ToolResultType.tabularData,
             data: { columns: ['@timestamp', 'level', 'message'], rows: [] },
           },
         ],
@@ -130,7 +145,7 @@ export function registerObservabilityAgent(onechat: OnechatPluginSetup) {
       return {
         results: [
           {
-            type: ToolResultType.tabular_data,
+            type: ToolResultType.tabularData,
             data: { columns: ['time', 'version', 'source'], rows: [] },
           },
         ],
@@ -142,13 +157,18 @@ export function registerObservabilityAgent(onechat: OnechatPluginSetup) {
   onechat.agents.register({
     id: OBS_AGENT_ID,
     name: 'Observability Agent',
-    description: 'Root cause analysis assistant for Observability data',
+    description:
+      'Observability assistant specialized in logs, metrics, and traces including root cause analysis.',
     configuration: {
       instructions:
-        'You are an Observability RCA assistant. Form hypotheses, validate with tools, extract evidence (queries/results), and avoid speculation.',
+        'You are an Observability assistant. You understand logs, metrics, and traces. Form hypotheses when investigating issues, validate them using the provided tools, correlate across data types, and include supporting evidence (queries/results). Perform root-cause analysis as needed and avoid speculation.',
       tools: [
         {
           tool_ids: [
+            platformCoreTools.search,
+            platformCoreTools.listIndices,
+            platformCoreTools.getIndexMapping,
+            platformCoreTools.getDocumentById,
             TOOL_GET_SERVICES,
             TOOL_GET_SERVICE_HEALTH,
             TOOL_GET_ROOT_CAUSE,

@@ -8,4 +8,4 @@
 import type { PluginInitializerContext } from '@kbn/core/server';
 import { ObservabilityAgentPlugin } from './plugin';
 
-export const plugin = (ctx: PluginInitializerContext) => new ObservabilityAgentPlugin(ctx as any);
+export const plugin = (ctx: PluginInitializerContext) => new ObservabilityAgentPlugin(ctx);

@@ -1,17 +1,17 @@
 {
   "type": "plugin",
   "id": "@kbn/observability-agent-plugin",
-  "owner": "@elastic/observability-ai",
+  "owner": "@elastic/obs-ai-assistant",
   "group": "observability",
-  "version": "0.0.1",
-  "server": true,
-  "ui": false,
+  "visibility": "private",
   "plugin": {
     "id": "observabilityAgent",
     "configPath": ["xpack", "observabilityAgent"],
     "server": true,
     "browser": false,
-    "requiredPlugins": ["onechat"],
-    "optionalPlugins": ["cloud", "spaces", "licensing"]
+    "requiredPlugins": ["onechat", "apmDataAccess", "logsDataAccess"],
+    "optionalPlugins": ["cloud", "spaces", "licensing"],
+    "requiredBundles": [],
+    "extraPublicDirs": []
   }
 }

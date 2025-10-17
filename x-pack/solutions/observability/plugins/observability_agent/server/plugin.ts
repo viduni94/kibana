@@ -5,15 +5,32 @@
  * 2.0.
  */
 
-import type { CoreSetup, Plugin } from '@kbn/core/server';
-import type { OnechatPluginSetup } from '@kbn/onechat-plugin/server';
+import type { CoreSetup, CoreStart, Plugin, PluginInitializerContext } from '@kbn/core/server';
+import type { Logger } from '@kbn/logging';
+import type { OnechatPluginSetup, OnechatPluginStart } from '@kbn/onechat-plugin/server';
+import type {
+  ApmDataAccessPluginSetup,
+  ApmDataAccessPluginStart,
+} from '@kbn/apm-data-access-plugin/server';
+import type {
+  LogsDataAccessPluginSetup,
+  LogsDataAccessPluginStart,
+} from '@kbn/logs-data-access-plugin/server';
 import { registerObservabilityAgent } from './register_observability_agent';
 
-export interface ObservabilityAgentPluginSetup {}
-export interface ObservabilityAgentPluginStart {}
+export type ObservabilityAgentPluginSetup = Record<string, never>;
+export type ObservabilityAgentPluginStart = Record<string, never>;
 
-export interface ObservabilityAgentSetupDeps {
+export interface ObservabilityAgentPluginSetupDependencies {
   onechat: OnechatPluginSetup;
+  apmDataAccess: ApmDataAccessPluginSetup;
+  logsDataAccess: LogsDataAccessPluginSetup;
+}
+
+export interface ObservabilityAgentPluginStartDependencies {
+  onechat: OnechatPluginStart;
+  apmDataAccess: ApmDataAccessPluginStart;
+  logsDataAccess: LogsDataAccessPluginStart;
 }
 
 export class ObservabilityAgentPlugin
@@ -21,15 +38,27 @@ export class ObservabilityAgentPlugin
     Plugin<
       ObservabilityAgentPluginSetup,
       ObservabilityAgentPluginStart,
-      ObservabilityAgentSetupDeps
+      ObservabilityAgentPluginSetupDependencies
     >
 {
-  public setup(_core: CoreSetup, deps: ObservabilityAgentSetupDeps): ObservabilityAgentPluginSetup {
-    registerObservabilityAgent(deps.onechat);
+  private readonly logger: Logger;
+
+  constructor(initContext: PluginInitializerContext) {
+    this.logger = initContext.logger.get();
+  }
+
+  public setup(
+    core: CoreSetup<ObservabilityAgentPluginStartDependencies, ObservabilityAgentPluginStart>,
+    plugins: ObservabilityAgentPluginSetupDependencies
+  ): ObservabilityAgentPluginSetup {
+    registerObservabilityAgent({ core, plugins, logger: this.logger });
     return {};
   }
 
-  public start(): ObservabilityAgentPluginStart {
+  public start(
+    _core: CoreStart,
+    _plugins: ObservabilityAgentPluginStartDependencies
+  ): ObservabilityAgentPluginStart {
     return {};
   }
 
