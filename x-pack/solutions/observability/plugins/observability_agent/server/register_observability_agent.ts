@@ -5,9 +5,7 @@
  * 2.0.
  */
 
-import { ToolType, platformCoreTools } from '@kbn/onechat-common';
-import { ToolResultType } from '@kbn/onechat-common/tools/tool_result';
-import { z } from '@kbn/zod';
+import { platformCoreTools } from '@kbn/onechat-common';
 import type { CoreSetup } from '@kbn/core/server';
 import type { Logger } from '@kbn/logging';
 import type {
@@ -39,119 +37,49 @@ export function registerObservabilityAgent({
 }) {
   const { onechat } = plugins;
 
-  onechat.tools.register({
-    id: TOOL_GET_SERVICES,
-    type: ToolType.builtin,
-    description: 'Summarize observable services over a time range.',
-    tags: ['observability', 'inventory'],
-    schema: z.object({
-      timeRange: z.object({ start: z.string(), end: z.string() }).describe('ISO datetimes'),
-      index: z.string().optional().describe('Custom index pattern override'),
-    }),
-    handler: async (_params, { esClient }) => {
-      // Placeholder: return an empty structured response. Implementation to follow.
-      return {
-        results: [
-          {
-            type: ToolResultType.other,
-            data: { services: [], totalServices: 0 },
-          },
-        ],
-      };
-    },
-  });
+  // Register tools from separate modules
+  const loadTools = async () => {
+    const { getServicesTool } = await import('./tools/get_services');
+    const { getServiceHealthTool } = await import('./tools/get_service_health');
+    const { getRootCauseCandidatesTool } = await import('./tools/get_root_cause_candidates');
+    const { getRelatedLogsTool } = await import('./tools/get_related_logs');
+    const { getDeployMarkersTool } = await import('./tools/get_deploy_markers');
+    const { anomalyDetectServiceMetricsTool } = await import(
+      './tools/anomaly_detect_service_metrics'
+    );
+    const { crossSignalCorrelatorTool } = await import('./tools/cross_signal_correlator');
+    const { serviceDependencyMapTool } = await import('./tools/service_dependency_map');
+    const { guidedKqlBuilderTool } = await import('./tools/guided_kql_builder');
+    const { logPatternOutliersTool } = await import('./tools/log_pattern_outliers');
+    const { incidentViewAggregateTool } = await import('./tools/incident_view_aggregate');
+    onechat.tools.register(getServicesTool({ apmDataAccess: (plugins as any).apmDataAccess }));
+    onechat.tools.register(getServiceHealthTool({ apmDataAccess: (plugins as any).apmDataAccess }));
+    onechat.tools.register(
+      getRootCauseCandidatesTool({
+        apmDataAccess: (plugins as any).apmDataAccess,
+        logsDataAccess: (plugins as any).logsDataAccess,
+      })
+    );
+    onechat.tools.register(getRelatedLogsTool({ logsDataAccess: (plugins as any).logsDataAccess }));
+    onechat.tools.register(getDeployMarkersTool({ apmDataAccess: (plugins as any).apmDataAccess }));
+    onechat.tools.register(
+      anomalyDetectServiceMetricsTool({ apmDataAccess: (plugins as any).apmDataAccess })
+    );
+    onechat.tools.register(
+      crossSignalCorrelatorTool({
+        apmDataAccess: (plugins as any).apmDataAccess,
+        logsDataAccess: (plugins as any).logsDataAccess,
+      })
+    );
+    onechat.tools.register(
+      serviceDependencyMapTool({ apmDataAccess: (plugins as any).apmDataAccess })
+    );
+    onechat.tools.register(guidedKqlBuilderTool());
+    onechat.tools.register(logPatternOutliersTool());
+    onechat.tools.register(incidentViewAggregateTool());
+  };
 
-  onechat.tools.register({
-    id: TOOL_GET_SERVICE_HEALTH,
-    type: ToolType.builtin,
-    description: 'Return latency/error rate/throughput trends for a service.',
-    tags: ['observability', 'health'],
-    schema: z.object({
-      serviceName: z.string(),
-      timeRange: z.object({ start: z.string(), end: z.string() }),
-      environment: z.string().optional(),
-      index: z.string().optional(),
-    }),
-    handler: async () => {
-      return {
-        results: [
-          {
-            type: ToolResultType.tabularData,
-            data: { columns: ['time', 'latencyP95', 'errorRate', 'tps'], rows: [] },
-          },
-        ],
-      };
-    },
-  });
-
-  onechat.tools.register({
-    id: TOOL_GET_ROOT_CAUSE,
-    type: ToolType.builtin,
-    description: 'Analyze traces and surface top root-cause candidates.',
-    tags: ['observability', 'rca'],
-    schema: z.object({
-      serviceName: z.string().optional(),
-      timeRange: z.object({ start: z.string(), end: z.string() }),
-      index: z.string().optional(),
-      maxCandidates: z.number().int().min(1).max(50).default(10),
-    }),
-    handler: async () => {
-      return {
-        results: [
-          {
-            type: ToolResultType.other,
-            data: { candidates: [] },
-          },
-        ],
-      };
-    },
-  });
-
-  onechat.tools.register({
-    id: TOOL_GET_RELATED_LOGS,
-    type: ToolType.builtin,
-    description: 'Fetch recent error/warn logs related to a service/environment.',
-    tags: ['observability', 'logs'],
-    schema: z.object({
-      serviceName: z.string(),
-      timeRange: z.object({ start: z.string(), end: z.string() }),
-      environment: z.string().optional(),
-      limit: z.number().int().min(1).max(500).default(100),
-      index: z.string().optional(),
-    }),
-    handler: async () => {
-      return {
-        results: [
-          {
-            type: ToolResultType.tabularData,
-            data: { columns: ['@timestamp', 'level', 'message'], rows: [] },
-          },
-        ],
-      };
-    },
-  });
-
-  onechat.tools.register({
-    id: TOOL_GET_DEPLOY_MARKERS,
-    type: ToolType.builtin,
-    description: 'List recent deploy markers and correlate with incidents.',
-    tags: ['observability', 'deploy'],
-    schema: z.object({
-      serviceName: z.string().optional(),
-      timeRange: z.object({ start: z.string(), end: z.string() }),
-      index: z.string().optional(),
-    }),
-    handler: async () => {
-      return {
-        results: [
-          {
-            type: ToolResultType.tabularData,
-            data: { columns: ['time', 'version', 'source'], rows: [] },
-          },
-        ],
-      };
-    },
-  });
+  void loadTools();
 
   // Register built-in Observability Agent
   onechat.agents.register({
@@ -169,11 +97,19 @@ export function registerObservabilityAgent({
             platformCoreTools.listIndices,
             platformCoreTools.getIndexMapping,
             platformCoreTools.getDocumentById,
+            platformCoreTools.generateEsql,
+            platformCoreTools.executeEsql,
             TOOL_GET_SERVICES,
             TOOL_GET_SERVICE_HEALTH,
             TOOL_GET_ROOT_CAUSE,
             TOOL_GET_RELATED_LOGS,
             TOOL_GET_DEPLOY_MARKERS,
+            'solution.observability.anomaly_detect_service_metrics',
+            'solution.observability.cross_signal_correlator',
+            'solution.observability.service_dependency_map',
+            'solution.observability.guided_kql_builder',
+            'solution.observability.log_pattern_outliers',
+            'solution.observability.incident_view_aggregate',
           ],
         },
       ],
