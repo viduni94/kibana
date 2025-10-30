@@ -47,11 +47,18 @@ export function addAnonymizationData(
           (item) => item.message.content
         );
 
+        const normalizeContentForLookup = (content?: string): string | undefined => {
+          if (!content) return undefined;
+          // If message collapsing appended a <steps>...</steps> payload to the user content,
+          // strip it so we can match against the original message content
+          return content.replace(/\s?<steps>[\s\S]*<\/steps>$/, '');
+        };
+
         for (const event of events) {
           event.deanonymized_input?.forEach((item) => {
-            const matchingMessage = item.message.content
-              ? messagesByContent[item.message.content]
-              : undefined;
+            const lookupKey =
+              normalizeContentForLookup(item.message.content) ?? item.message.content;
+            const matchingMessage = lookupKey ? messagesByContent[lookupKey] : undefined;
 
             if (matchingMessage) {
               matchingMessage.message.deanonymizations = item.deanonymizations;
