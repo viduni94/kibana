@@ -21,6 +21,7 @@ export const AGENT_BUILDER_BUILTIN_TOOLS: string[] = [
   'observability.get_alerts',
   'observability.get_services',
   'observability.get_downstream_dependencies',
+  'observability.contextual_insight',
 ];
 
 /**

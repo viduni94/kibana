@@ -50,6 +50,7 @@ import { ErrorTabKey, getTabs } from './error_tabs';
 import { ErrorUiActionsContextMenu } from './error_ui_actions_context_menu';
 import { SampleSummary } from './sample_summary';
 import { ErrorSampleContextualInsight } from './error_sample_contextual_insight';
+import { ErrorSampleAgentBuilderContextualInsight } from './error_sample_agent_builder_contextual_insight';
 import { getComparisonEnabled } from '../../../shared/time_comparison/get_comparison_enabled';
 import { buildUrl } from '../../../../utils/build_url';
 import { OpenErrorInDiscoverButton } from '../../../shared/links/discover_links/open_error_in_discover_button';
@@ -292,6 +293,7 @@ export function ErrorSampleDetails({
       )}
 
       <ErrorSampleContextualInsight error={error} transaction={transaction} />
+      <ErrorSampleAgentBuilderContextualInsight error={error} transaction={transaction} />
 
       <EuiTabs>
         {tabs.map(({ key, label }) => {

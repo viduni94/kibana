@@ -30,6 +30,7 @@ import {
   OBSERVABILITY_GET_SERVICES_TOOL_ID,
   OBSERVABILITY_GET_DOWNSTREAM_DEPENDENCIES_TOOL_ID,
 } from '../../common/constants';
+import { createContextualInsightTool } from './contextual_insight/contextual_insight';
 
 const PLATFORM_TOOL_IDS = [
   platformCoreTools.search,
@@ -71,6 +72,7 @@ export async function registerTools({
     createRunLogRateAnalysisTool({ logger }),
     createGetAnomalyDetectionJobsTool({ core, plugins, logger }),
     createGetAlertsTool({ core, logger }),
+    createContextualInsightTool({ core, logger }),
   ];
 
   for (const tool of observabilityTools) {

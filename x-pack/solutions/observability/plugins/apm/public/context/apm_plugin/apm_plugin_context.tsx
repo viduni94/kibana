@@ -20,6 +20,7 @@ import type { UiActionsStart } from '@kbn/ui-actions-plugin/public';
 import type { ObservabilityAIAssistantPublicStart } from '@kbn/observability-ai-assistant-plugin/public';
 import type { SharePluginSetup } from '@kbn/share-plugin/public';
 import type { LicensingPluginStart } from '@kbn/licensing-plugin/public';
+import type { OnechatPluginStart } from '@kbn/onechat-plugin/public';
 import type { ApmPluginSetupDeps } from '../../plugin';
 import type { ConfigSchema } from '../..';
 import type { KibanaEnvContext } from '../kibana_environment_context/kibana_environment_context';
@@ -38,6 +39,7 @@ export interface ApmPluginContextValue {
   unifiedSearch: UnifiedSearchPublicPluginStart;
   uiActions: UiActionsStart;
   observabilityAIAssistant?: ObservabilityAIAssistantPublicStart;
+  onechat?: OnechatPluginStart;
   share: SharePluginSetup;
   kibanaEnvironment: KibanaEnvContext;
   lens: LensPublicStart;
