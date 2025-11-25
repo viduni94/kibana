@@ -19,7 +19,6 @@ import type { AT_TIMESTAMP } from '@kbn/apm-types';
 import { OBSERVABILITY_CONTEXTUAL_INSIGHT_TOOL_ID } from '../../../../../common/observability_agent/agent_tool_ids';
 import type { APMError } from '../../../../../typings/es_schemas/ui/apm_error';
 import { useApmPluginContext } from '../../../../context/apm_plugin/use_apm_plugin_context';
-import { useKibana } from '../../../../context/kibana_context/use_kibana';
 import { ErrorSampleDetailTabContent } from './error_sample_detail';
 import { exceptionStacktraceTab, logStacktraceTab } from './error_tabs';
 import { useLocalStorage } from '../../../../utils/use_local_storage';
@@ -98,8 +97,6 @@ ${exceptionStacktrace ? `The exception stacktrace:\n${exceptionStacktrace}` : ''
           }),
         }
       );
-
-      console.log('res', res);
 
       if (aborted) return;
 
