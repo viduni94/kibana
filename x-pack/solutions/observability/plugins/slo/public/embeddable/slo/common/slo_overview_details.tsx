@@ -69,11 +69,9 @@ export function SloOverviewDetailsContent({
             sloId: slo.id,
             remoteName: slo.remote?.remoteName,
             sloInstanceId: slo.instanceId,
-            ...(slo?.name && {
-              attachmentLabel: i18n.translate('xpack.slo.sloDetails.sloAttachmentLabel', {
-                defaultMessage: '{sloName} SLO',
-                values: { sloName: slo.name },
-              }),
+            attachmentLabel: i18n.translate('xpack.slo.sloDetails.sloAttachmentLabel', {
+              defaultMessage: '{sloName} SLO',
+              values: { sloName: slo.name },
             }),
           },
         },

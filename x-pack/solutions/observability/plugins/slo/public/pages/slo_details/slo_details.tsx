@@ -106,7 +106,7 @@ export function SloDetailsPage() {
 
   // Configure agent builder global flyout with the SLO attachment
   useEffect(() => {
-    if (!agentBuilder || !sloId) {
+    if (!agentBuilder || !slo) {
       return;
     }
 
@@ -117,14 +117,12 @@ export function SloDetailsPage() {
         {
           type: OBSERVABILITY_SLO_ATTACHMENT_TYPE_ID,
           data: {
-            sloId,
+            sloId: slo.id,
             remoteName,
             sloInstanceId,
-            ...(slo?.name && {
-              attachmentLabel: i18n.translate('xpack.slo.sloDetails.sloAttachmentLabel', {
-                defaultMessage: '{sloName} SLO',
-                values: { sloName: slo.name },
-              }),
+            attachmentLabel: i18n.translate('xpack.slo.sloDetails.sloAttachmentLabel', {
+              defaultMessage: '{sloName} SLO',
+              values: { sloName: slo.name },
             }),
           },
         },
