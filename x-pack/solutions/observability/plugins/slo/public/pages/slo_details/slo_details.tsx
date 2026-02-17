@@ -111,7 +111,6 @@ export function SloDetailsPage() {
     }
 
     agentBuilder.setConversationFlyoutActiveConfig({
-      newConversation: true,
       agentId: OBSERVABILITY_AGENT_ID,
       attachments: [
         {

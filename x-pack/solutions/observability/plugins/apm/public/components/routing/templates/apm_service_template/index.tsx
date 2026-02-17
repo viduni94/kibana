@@ -84,7 +84,6 @@ function TemplateWithContext({ title, children, selectedTab, searchBarOptions }:
     }
 
     agentBuilder.setConversationFlyoutActiveConfig({
-      newConversation: true,
       agentId: OBSERVABILITY_AGENT_ID,
       attachments: [
         {
