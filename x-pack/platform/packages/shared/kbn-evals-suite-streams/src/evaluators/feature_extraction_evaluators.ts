@@ -5,42 +5,117 @@
  * 2.0.
  */
 
-import type { BaseFeature } from '@kbn/streams-schema';
-import { identifyFeatures } from '@kbn/streams-ai';
-import { featuresPrompt } from '@kbn/streams-ai/src/features/prompt';
-import { get } from 'lodash';
-import { tags } from '@kbn/scout';
-import { evaluate } from '../src/evaluate';
-import type { StreamsEvaluationWorkerFixtures } from '../src/types';
-import type {
-  FeatureIdentificationEvaluationDataset,
-  FeatureIdentificationEvaluationExample,
-  ValidFeatureType,
-} from './features_identification_datasets';
 import {
-  FEATURE_IDENTIFICATION_DATASETS,
-  VALID_FEATURE_TYPES,
-} from './features_identification_datasets';
+  createQuantitativeCorrectnessEvaluators,
+  selectEvaluators,
+  type EvaluationCriterion,
+} from '@kbn/evals';
+import type { Evaluator } from '@kbn/evals/src/types';
+import { get } from 'lodash';
 
-evaluate.describe.configure({ timeout: 300_000 });
+export const VALID_FEATURE_TYPES = [
+  'entity',
+  'infrastructure',
+  'technology',
+  'dependency',
+  'schema',
+] as const;
+export type ValidFeatureType = (typeof VALID_FEATURE_TYPES)[number];
 
-/**
- * Deterministic CODE evaluators that run alongside the LLM-based criteria evaluator.
- * These verify objectively measurable properties without relying on an LLM judge.
- */
-
-interface CodeEvaluatorParams {
-  input: FeatureIdentificationEvaluationExample['input'];
-  output: { features: BaseFeature[] };
-  expected: FeatureIdentificationEvaluationExample['output'];
-  metadata: FeatureIdentificationEvaluationExample['metadata'];
+interface FeatureOutput {
+  id: string;
+  type: string;
+  evidence?: string[];
+  confidence: number;
+  [key: string]: unknown;
 }
 
-/**
- * Validates that every feature's `type` is one of the valid feature types.
- * Other schema fields (id, description, confidence, etc.) are already enforced
- * by the inference client's tool output schema in the prompt.ts file.
- */
+interface CodeEvaluatorParams {
+  input: Record<string, unknown>;
+  output: { features: FeatureOutput[] };
+  expected: {
+    min_features?: number;
+    max_features?: number;
+    max_confidence?: number;
+    required_types?: ValidFeatureType[];
+    forbidden_types?: ValidFeatureType[];
+  };
+  metadata: Record<string, unknown> | null | undefined;
+}
+
+const getSampleDocuments = (input: Record<string, unknown>): Array<Record<string, unknown>> =>
+  (input.sample_documents as Array<Record<string, unknown>>) ?? [];
+
+const parseKeyValuePairs = (evidence: string): Array<{ key: string; value: string }> => {
+  const regex =
+    /([a-zA-Z_][a-zA-Z0-9_.]*)\s*=\s*([^\s]+(?:\s+(?![a-zA-Z_][a-zA-Z0-9_.]*\s*=)[^\s]+)*)/g;
+  const pairs: Array<{ key: string; value: string }> = [];
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(evidence)) !== null) {
+    pairs.push({ key: match[1], value: match[2] });
+  }
+
+  return pairs;
+};
+
+const getNestedValue = (doc: Record<string, unknown>, path: string): unknown => {
+  if (path in doc) {
+    return doc[path];
+  }
+
+  return get(doc, path);
+};
+
+const getAllStringValues = (doc: Record<string, unknown>): string[] => {
+  const values: string[] = [];
+
+  const walk = (obj: unknown) => {
+    if (typeof obj === 'string') {
+      values.push(obj);
+    } else if (Array.isArray(obj)) {
+      for (const item of obj) {
+        walk(item);
+      }
+    } else if (obj !== null && typeof obj === 'object') {
+      for (const val of Object.values(obj as Record<string, unknown>)) {
+        walk(val);
+      }
+    }
+  };
+
+  walk(doc);
+  return values;
+};
+
+const isEvidenceGrounded = (
+  evidence: string,
+  documents: Array<Record<string, unknown>>
+): boolean => {
+  const matchesStringValue = documents.some((doc) => {
+    const allValues = getAllStringValues(doc);
+    return allValues.some((val) => val.includes(evidence) || evidence.includes(val));
+  });
+  if (matchesStringValue) {
+    return true;
+  }
+
+  const kvPairs = parseKeyValuePairs(evidence);
+  if (kvPairs.length > 0) {
+    const matchesDocumentKey = documents.some((doc) =>
+      kvPairs.some(({ key, value }) => {
+        const docValue = getNestedValue(doc, key);
+        return docValue !== undefined && String(docValue).includes(value);
+      })
+    );
+    if (matchesDocumentKey) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
 const typeValidationEvaluator = {
   name: 'type_validation',
   kind: 'CODE' as const,
@@ -72,103 +147,12 @@ const typeValidationEvaluator = {
   },
 };
 
-/**
- * Parses a `field.path=value` evidence string into key-value pairs.
- * Handles compound evidence like `"http.method=GET http.url=/api/users"`.
- * Returns an empty array if the string doesn't match the pattern.
- */
-function parseKeyValuePairs(evidence: string): Array<{ key: string; value: string }> {
-  const regex =
-    /([a-zA-Z_][a-zA-Z0-9_.]*)\s*=\s*([^\s]+(?:\s+(?![a-zA-Z_][a-zA-Z0-9_.]*\s*=)[^\s]+)*)/g;
-  const pairs: Array<{ key: string; value: string }> = [];
-  let match: RegExpExecArray | null;
-
-  while ((match = regex.exec(evidence)) !== null) {
-    pairs.push({ key: match[1], value: match[2] });
-  }
-
-  return pairs;
-}
-
-function getNestedValue(doc: Record<string, unknown>, path: string): unknown {
-  if (path in doc) {
-    return doc[path];
-  }
-
-  return get(doc, path);
-}
-
-/**
- * Recursively extracts all string values from a document object,
- * so direct-quote evidence can be matched against any field.
- */
-function getAllStringValues(doc: Record<string, unknown>): string[] {
-  const values: string[] = [];
-
-  const walk = (obj: unknown) => {
-    if (typeof obj === 'string') {
-      values.push(obj);
-    } else if (Array.isArray(obj)) {
-      for (const item of obj) {
-        walk(item);
-      }
-    } else if (obj !== null && typeof obj === 'object') {
-      for (const val of Object.values(obj as Record<string, unknown>)) {
-        walk(val);
-      }
-    }
-  };
-
-  walk(doc);
-  return values;
-}
-
-/**
- * Checks whether a single evidence string is grounded in the input documents.
- *
- * 1. `field.path=value` evidence: parses key-value pairs and checks that at
- *    least one pair matches a document field value.
- * 2. Direct quote evidence: checks if the text appears as a substring in any
- *    string value across all document fields.
- */
-function isEvidenceGrounded(evidence: string, documents: Array<Record<string, unknown>>): boolean {
-  // Direct quote: check against all string values in all documents
-  const matchesStringValue = documents.some((doc) => {
-    const allValues = getAllStringValues(doc);
-    return allValues.some((val) => val.includes(evidence) || evidence.includes(val));
-  });
-  if (matchesStringValue) {
-    return true;
-  }
-
-  const kvPairs = parseKeyValuePairs(evidence);
-  if (kvPairs.length > 0) {
-    // field=value: at least one pair must match a document field
-    const matchesDocumentKey = documents.some((doc) =>
-      kvPairs.some(({ key, value }) => {
-        const docValue = getNestedValue(doc, key);
-        return docValue !== undefined && String(docValue).includes(value);
-      })
-    );
-    if (matchesDocumentKey) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-/**
- * Checks that every evidence string in every feature is grounded in the input
- * documents — either as a `field.path=value` snippet matching a document field,
- * or as a direct quote appearing in any string value.
- */
 const evidenceGroundingEvaluator = {
   name: 'evidence_grounding',
   kind: 'CODE' as const,
   evaluate: async ({ input, output }: CodeEvaluatorParams) => {
     const features = output?.features ?? [];
-    const documents = input.sample_documents;
+    const documents = getSampleDocuments(input);
 
     let totalEvidence = 0;
     let groundedEvidence = 0;
@@ -212,10 +196,6 @@ const evidenceGroundingEvaluator = {
   },
 };
 
-/**
- * If min_features or max_features is specified in expected output,
- * verifies the feature count falls within bounds.
- */
 const featureCountEvaluator = {
   name: 'feature_count',
   kind: 'CODE' as const,
@@ -244,9 +224,6 @@ const featureCountEvaluator = {
   },
 };
 
-/**
- * If max_confidence is specified, verifies no feature exceeds it.
- */
 const confidenceBoundsEvaluator = {
   name: 'confidence_bounds',
   kind: 'CODE' as const,
@@ -281,9 +258,6 @@ const confidenceBoundsEvaluator = {
   },
 };
 
-/**
- * If required_types or forbidden_types is specified, checks feature types accordingly.
- */
 const typeAssertionsEvaluator = {
   name: 'type_assertions',
   kind: 'CODE' as const,
@@ -336,82 +310,30 @@ const typeAssertionsEvaluator = {
   },
 };
 
-const CODE_EVALUATORS = [
-  typeValidationEvaluator,
-  evidenceGroundingEvaluator,
-  featureCountEvaluator,
-  confidenceBoundsEvaluator,
-  typeAssertionsEvaluator,
-];
+export const createFeatureExtractionEvaluators = () => {
+  return selectEvaluators([
+    typeValidationEvaluator,
+    evidenceGroundingEvaluator,
+    featureCountEvaluator,
+    confidenceBoundsEvaluator,
+    typeAssertionsEvaluator,
+    ...createQuantitativeCorrectnessEvaluators(),
+  ]);
+};
 
-evaluate.describe(
-  'Streams features identification',
-  { tag: tags.serverless.observability.complete },
-  () => {
-    async function runFeatureIdentificationExperiment(
-      dataset: FeatureIdentificationEvaluationDataset,
-      {
-        phoenixClient,
-        inferenceClient,
-        logger,
-        evaluators,
-      }: Pick<
-        StreamsEvaluationWorkerFixtures,
-        'phoenixClient' | 'inferenceClient' | 'logger' | 'evaluators'
-      >
-    ) {
-      await phoenixClient.runExperiment(
-        {
-          dataset,
-          concurrency: 1,
-          task: async ({ input }: { input: FeatureIdentificationEvaluationExample['input'] }) => {
-            const { features } = await identifyFeatures({
-              streamName: 'test',
-              sampleDocuments: input.sample_documents,
-              systemPrompt: featuresPrompt,
-              inferenceClient,
-              logger,
-              signal: new AbortController().signal,
-            });
-
-            return { features };
-          },
-        },
-        [
-          {
-            name: 'feature_correctness',
-            kind: 'LLM' as const,
-            evaluate: async ({ input, output, expected, metadata }) => {
-              const result = await evaluators.criteria(expected.criteria).evaluate({
-                input,
-                expected,
-                output: output.features,
-                metadata,
-              });
-
-              return result;
-            },
-          },
-          ...CODE_EVALUATORS,
-        ]
-      );
-    }
-
-    // Run evaluation for each dataset
-    FEATURE_IDENTIFICATION_DATASETS.forEach((dataset) => {
-      evaluate.describe(dataset.name, () => {
-        evaluate(
-          'feature identification',
-          async ({ evaluators, inferenceClient, logger, phoenixClient }) => {
-            await runFeatureIdentificationExperiment(dataset, {
-              inferenceClient,
-              logger,
-              phoenixClient,
-              evaluators,
-            });
-          }
-        );
-      });
+export const createScenarioCriteriaEvaluator = (
+  criteriaFn: (criteria: EvaluationCriterion[]) => Evaluator,
+  criteria: EvaluationCriterion[]
+): Evaluator => ({
+  name: 'scenario_criteria',
+  kind: 'LLM' as const,
+  evaluate: async ({ input, output, expected, metadata }) => {
+    const { features } = output as { features: unknown };
+    return criteriaFn(criteria).evaluate({
+      input,
+      expected,
+      output: features,
+      metadata,
     });
-  }
-);
+  },
+});
