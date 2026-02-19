@@ -123,7 +123,7 @@ evaluate.describe(
 
         evaluate.afterAll(async ({ esClient, log }) => {
           log.debug('Cleaning up significant events data');
-          await cleanSignificantEventsDataStreams(esClient);
+          await cleanSignificantEventsDataStreams(esClient, log);
         });
       });
     }

@@ -51,7 +51,7 @@ const createFeature = (
   ...overrides,
 });
 
-export const SNAPSHOT_QUERY_GEN_EXAMPLES: SnapshotQueryGenExample[] = [
+export const SNAPSHOT_QUERY_GENERATION_EXAMPLES: SnapshotQueryGenExample[] = [
   {
     input: {
       scenario_id: 'healthy-baseline',

@@ -15,33 +15,36 @@ import {
   createQueryGenEvaluators,
   createScenarioCriteriaEvaluator,
 } from '../../../src/evaluators/query_generation_evaluators';
-import { SNAPSHOT_QUERY_GEN_EXAMPLES } from './snapshot_datasets';
-import {
-  replaySignificantEventsSnapshot,
-  cleanSignificantEventsDataStreams,
-} from '../../../src/data_generators/replay';
+import { SNAPSHOT_QUERY_GENERATION_EXAMPLES } from './snapshot_datasets';
+import { replayIntoManagedStream } from '../../../src/data_generators/replay';
 
 const INDEX_REFRESH_WAIT_MS = 2500;
+const SAMPLE_DOCS_SIZE = 500;
 
 evaluate.describe(
   'Significant events query generation',
   { tag: tags.serverless.observability.complete },
   () => {
-    for (const scenario of SNAPSHOT_QUERY_GEN_EXAMPLES) {
+    for (const scenario of SNAPSHOT_QUERY_GENERATION_EXAMPLES) {
       evaluate.describe(scenario.input.scenario_id, () => {
         let sampleLogs: string[] = [];
         let testIndex: string;
 
         evaluate.beforeAll(async ({ esClient, apiServices, log }) => {
           await apiServices.streams.enable();
-          await replaySignificantEventsSnapshot(esClient, log, scenario.input.snapshot_name);
 
-          log.debug('Waiting for indices to refresh');
+          const stats = await replayIntoManagedStream(esClient, log, scenario.input.snapshot_name);
+          if (stats.created === 0) {
+            throw new Error(
+              `No documents indexed after replaying snapshot ${scenario.input.snapshot_name}`
+            );
+          }
+
           await new Promise((resolve) => setTimeout(resolve, INDEX_REFRESH_WAIT_MS));
 
           const searchResult = await esClient.search({
             index: 'logs*',
-            size: 50,
+            size: SAMPLE_DOCS_SIZE,
             query: { match_all: {} },
             sort: [{ '@timestamp': { order: 'desc' } }],
           });
@@ -53,12 +56,6 @@ evaluate.describe(
 
           testIndex = `logs-otel-query-gen-${scenario.input.scenario_id}-${Date.now()}`;
           await esClient.indices.createDataStream({ name: testIndex });
-
-          if (searchResult.hits.hits.length === 0) {
-            throw new Error(
-              `No log documents found after replaying snapshot ${scenario.input.snapshot_name}`
-            );
-          }
 
           const bulkBody = searchResult.hits.hits.flatMap((hit) => [
             { create: { _index: testIndex } },
@@ -146,12 +143,9 @@ evaluate.describe(
 
         evaluate.afterAll(async ({ esClient, apiServices, log }) => {
           log.debug('Cleaning up test data');
-          await Promise.all([
-            testIndex
-              ? esClient.indices.deleteDataStream({ name: testIndex }).catch(() => {})
-              : Promise.resolve(),
-            cleanSignificantEventsDataStreams(esClient),
-          ]);
+          if (testIndex) {
+            await esClient.indices.deleteDataStream({ name: testIndex }).catch(() => {});
+          }
           await apiServices.streams.disable();
         });
       });
