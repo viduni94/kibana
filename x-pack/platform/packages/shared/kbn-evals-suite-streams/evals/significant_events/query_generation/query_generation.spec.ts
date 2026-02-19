@@ -110,7 +110,7 @@ evaluate.describe(
                     logger,
                     signal: new AbortController().signal,
                     systemPrompt: significantEventsPrompt,
-                    features: scenario.input.features,
+                    getFeatures: async () => scenario.input.features,
                   });
 
                   const correctnessResult = await withEvaluatorSpan('CorrectnessAnalysis', {}, () =>
