@@ -7,6 +7,9 @@
 
 import type { DatasetConfig } from './types';
 
+// TODO: Only the `healthy-baseline` and `payment-unreachable` scenario criteria have been validated
+// against replayed snapshot data so far. Treat the remaining scenarios as unvalidated placeholders
+// until the criteria are validated and refined.
 export const otelDemoDataset: DatasetConfig = {
   id: 'otel-demo',
   description: 'OpenTelemetry Demo microservices application',
@@ -20,37 +23,57 @@ export const otelDemoDataset: DatasetConfig = {
         criteria: [
           {
             id: 'entity-frontend',
-            text: 'Must identify the frontend service as an entity',
-            score: 2,
+            text: 'Must identify frontend service as an entity (evidence: resource.attributes.app=frontend)',
+            score: 1,
           },
           {
             id: 'entity-checkout',
-            text: 'Must identify the checkout service as an entity',
+            text: 'Must identify checkout service as an entity (evidence: resource.attributes.app=checkout)',
             score: 2,
           },
           {
             id: 'entity-cart',
-            text: 'Must identify the cart service as an entity',
+            text: 'Must identify cart service as an entity (evidence: resource.attributes.app=cart; cartservice logs)',
             score: 2,
           },
           {
             id: 'entity-payment',
-            text: 'Must identify the payment service as an entity',
+            text: 'Must identify payment service as an entity (evidence: resource.attributes.app=payment; paymentservice container metadata)',
             score: 1,
           },
           {
-            id: 'entity-currency',
-            text: 'Must identify the currency service as an entity',
+            id: 'entity-product-catalog',
+            text: 'Must identify product-catalog service as an entity (evidence: resource.attributes.app=product-catalog)',
+            score: 1,
+          },
+          {
+            id: 'entity-shipping',
+            text: 'Must identify shipping service as an entity (evidence: resource.attributes.app=shipping)',
+            score: 1,
+          },
+          {
+            id: 'entity-email',
+            text: 'Must identify email service as an entity (evidence: resource.attributes.app=email)',
+            score: 1,
+          },
+          {
+            id: 'entity-ad',
+            text: 'Must identify ad service as an entity (evidence: resource.attributes.app=ad)',
+            score: 1,
+          },
+          {
+            id: 'entity-recommendation',
+            text: 'Must identify recommendation service as an entity (evidence: resource.attributes.app=recommendation)',
+            score: 1,
+          },
+          {
+            id: 'entity-quote',
+            text: 'Must identify quote service as an entity (evidence: resource.attributes.app=quote)',
             score: 1,
           },
           {
             id: 'dep-checkout-payment',
-            text: 'Must identify the dependency from checkout to payment service',
-            score: 2,
-          },
-          {
-            id: 'dep-frontend-product-catalog',
-            text: 'Must identify the dependency from frontend to product-catalog service',
+            text: 'Must identify the dependency checkout → payment (evidence: checkout logs mention payment and transaction/charge success)',
             score: 2,
           },
           {
@@ -63,7 +86,7 @@ export const otelDemoDataset: DatasetConfig = {
         max_features: 20,
         required_types: ['entity'],
         expected_ground_truth:
-          'entities=[frontend, checkout, cart, payment, currency, product-catalog, recommendation, shipping, email, ad, quote], deps=[checkout->payment, checkout->currency, frontend->product-catalog, cart->valkey], infra=[kubernetes]',
+          'entities=[frontend, checkout, cart, payment, product-catalog, recommendation, shipping, email, ad, quote], deps=[checkout->payment, cart->valkey], infra=[kubernetes]',
       },
       metadata: {
         difficulty: 'easy',
@@ -74,40 +97,59 @@ export const otelDemoDataset: DatasetConfig = {
     {
       input: {
         scenario_id: 'payment-unreachable',
+        log_query_filter: {
+          bool: {
+            filter: [
+              { terms: { 'resource.attributes.app': ['frontend', 'checkout'] } },
+              {
+                bool: {
+                  should: [
+                    { match_phrase: { 'body.text': 'failed to charge card' } },
+                    { match_phrase: { 'body.text': 'transport: Error while dialing' } },
+                    { match_phrase: { 'body.text': 'dial tcp' } },
+                    { match_phrase: { 'body.text': 'i/o timeout' } },
+                    { match_phrase: { 'body.text': 'deadline exceeded' } },
+                  ],
+                  minimum_should_match: 1,
+                },
+              },
+            ],
+          },
+        },
       },
       output: {
         criteria: [
           {
             id: 'entity-checkout',
-            text: 'Must identify checkout service as an entity (source of payment errors)',
+            text: 'Must identify checkout service as an entity (evidence: resource.attributes.app=checkout)',
             score: 2,
           },
           {
             id: 'entity-payment',
-            text: 'Must identify payment service as an entity (unreachable target)',
+            text: 'Must identify payment service as an entity and downstream target (evidence: resource.attributes.app=payment and/or paymentservice container metadata)',
             score: 2,
           },
           {
             id: 'dep-checkout-payment',
-            text: 'Must identify the dependency from checkout to payment (connection refused / deadline exceeded)',
+            text: 'Must identify the dependency checkout → payment (evidence: charge failures/dialing/timeouts toward payment, often surfaced in frontend/checkout logs)',
             score: 3,
           },
           {
             id: 'entity-frontend',
-            text: 'Must identify frontend service (upstream impact)',
+            text: 'Must identify frontend service (evidence: resource.attributes.app=frontend; upstream impact)',
             score: 1,
           },
           {
             id: 'error-signatures',
-            text: 'Must reference error signatures like connection refused, deadline exceeded, or gRPC errors in evidence',
+            text: 'Must reference error signatures like i/o timeout, dial tcp, deadline exceeded, or gRPC errors in evidence',
             score: 2,
           },
         ],
         min_features: 3,
-        max_features: 20,
+        max_features: 30,
         required_types: ['entity', 'dependency'],
         expected_ground_truth:
-          'entities=[checkout, payment, frontend], deps=[checkout->payment (connection refused)], error_signatures=[deadline exceeded, connection refused, gRPC transport failure]',
+          'entities=[checkout, payment, frontend], deps=[checkout->payment (timeout)], error_signatures=[i/o timeout, dial tcp, deadline exceeded, gRPC transport failure]',
       },
       metadata: {
         difficulty: 'medium',
@@ -343,18 +385,18 @@ export const otelDemoDataset: DatasetConfig = {
         criteria: [
           {
             id: 'healthy-baseline-queries',
-            text: 'Should generate queries for operational monitoring (e.g., status codes, latency, service health) rather than error detection since this is healthy traffic',
+            text: 'Should generate queries for operational monitoring (e.g., service health, throughput, request volume, latency) rather than error-focused detection since this is healthy traffic',
             score: 2,
           },
           {
             id: 'multi-service-coverage',
-            text: 'Generated queries should cover multiple services (frontend, checkout, cart, payment)',
+            text: 'Generated queries should cover multiple services present in the logs (e.g., cart, checkout, shipping, payment) rather than a single service only',
             score: 2,
           },
         ],
         expected_categories: ['operational'],
         expected_ground_truth:
-          'queries=[operational monitoring for status codes, service health across frontend/checkout/cart/payment services]',
+          'queries=[operational monitoring for service health/traffic/latency across cart/checkout/shipping/payment services]',
       },
       metadata: {
         difficulty: 'easy',
@@ -367,18 +409,18 @@ export const otelDemoDataset: DatasetConfig = {
         scenario_id: 'payment-unreachable',
         stream_name: 'logs',
         stream_description:
-          'OTel Demo logs where the payment service becomes unreachable, causing checkout failures with connection refused and deadline exceeded errors',
+          'OTel Demo logs where the payment service becomes unreachable, causing charge failures with dial tcp / i/o timeout / deadline exceeded and gRPC transport dialing errors',
       },
       output: {
         criteria: [
           {
             id: 'payment-error-query',
-            text: 'Must generate a KQL query that catches payment-related errors (connection refused, deadline exceeded, gRPC transport failure)',
+            text: 'Must generate a KQL query that catches payment-unreachable errors (e.g., failed to charge card, transport: Error while dialing, dial tcp, i/o timeout, deadline exceeded)',
             score: 3,
           },
           {
             id: 'checkout-impact-query',
-            text: 'Should generate a query that detects checkout service errors caused by payment unreachability',
+            text: 'Should generate a query that detects user-facing impact in upstream services (frontend and/or checkout) caused by payment unreachability',
             score: 2,
           },
           {
@@ -388,9 +430,9 @@ export const otelDemoDataset: DatasetConfig = {
           },
         ],
         expected_categories: ['error', 'operational'],
-        kql_substrings: ['connection refused', 'deadline exceeded'],
+        kql_substrings: ['failed to charge card', 'dial tcp', 'i/o timeout', 'deadline exceeded'],
         expected_ground_truth:
-          'queries=[error detection for connection refused/deadline exceeded between checkout and payment, checkout 500 errors]',
+          'queries=[error detection for dial tcp/i/o timeout/deadline exceeded gRPC dialing errors for payment unreachability, upstream impact in frontend/checkout]',
       },
       metadata: {
         difficulty: 'medium',

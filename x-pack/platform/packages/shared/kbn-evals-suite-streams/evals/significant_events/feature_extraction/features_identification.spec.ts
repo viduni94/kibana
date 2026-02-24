@@ -17,6 +17,7 @@ import {
   replaySignificantEventsSnapshot,
 } from '../../../src/data_generators/replay';
 import { createFeatureExtractionEvaluators } from '../../../src/evaluators/feature_extraction_evaluators';
+import { collectSampleDocuments } from './collect_sample_documents';
 
 const INDEX_REFRESH_WAIT_MS = 2500;
 
@@ -52,22 +53,13 @@ evaluate.describe(
           log.debug('Waiting for indices to refresh');
           await new Promise((resolve) => setTimeout(resolve, INDEX_REFRESH_WAIT_MS));
 
-          const searchResult = await esClient.search({
-            index: 'logs*',
-            size: 20,
-            query: scenario.input.log_query_filter ?? { match_all: {} },
-            sort: [{ '@timestamp': { order: 'desc' } }],
-          });
+          sampleDocuments = await collectSampleDocuments({ esClient, scenario, log });
 
-          if (searchResult.hits.hits.length === 0) {
+          if (sampleDocuments.length === 0) {
             throw new Error(
               `No log documents found after replaying snapshot ${scenario.input.scenario_id}`
             );
           }
-
-          sampleDocuments = searchResult.hits.hits.map(
-            (hit) => hit._source as Record<string, unknown>
-          );
         });
 
         evaluate(
@@ -104,7 +96,7 @@ evaluate.describe(
                     signal: new AbortController().signal,
                   });
 
-                  return { features };
+                  return features;
                 },
               },
               createFeatureExtractionEvaluators({

@@ -22,7 +22,7 @@ export type ValidFeatureType = (typeof VALID_FEATURE_TYPES)[number];
 
 export interface FeatureExtractionEvaluationExample {
   input: {
-    sample_documents: Array<Record<string, any>>;
+    sample_documents: Array<Record<string, unknown>>;
   };
   output: {
     criteria: EvaluationCriterion[];
@@ -32,10 +32,10 @@ export interface FeatureExtractionEvaluationExample {
     max_confidence?: number;
     required_types?: ValidFeatureType[];
     forbidden_types?: ValidFeatureType[];
+    expected_ground_truth: string;
+    expected?: string;
   };
-  metadata: {
-    description?: string;
-  };
+  metadata: Record<string, unknown> | null;
 }
 
 export interface FeatureIdentificationEvaluationDataset {
@@ -44,16 +44,9 @@ export interface FeatureIdentificationEvaluationDataset {
   examples: FeatureExtractionEvaluationExample[];
 }
 
-// interface CodeEvaluatorParams {
-//   input: FeatureExtractionEvaluationExample['input'];
-//   output: { features: BaseFeature[] };
-//   expected: FeatureExtractionEvaluationExample['output'];
-//   metadata: FeatureExtractionEvaluationExample['metadata'];
-// }
-
 interface CodeEvaluatorParams {
   input: Record<string, unknown>;
-  output: { features: BaseFeature[] };
+  output: BaseFeature[];
   expected: {
     min_features?: number;
     max_features?: number;
@@ -73,7 +66,7 @@ const typeValidationEvaluator = {
   name: 'type_validation',
   kind: 'CODE' as const,
   evaluate: async ({ output }: CodeEvaluatorParams) => {
-    const features = output?.features ?? [];
+    const features = output ?? [];
     if (features.length === 0) {
       return { score: 1, explanation: 'No features to validate (vacuously valid)' };
     }
@@ -198,7 +191,7 @@ const evidenceGroundingEvaluator = {
   name: 'evidence_grounding',
   kind: 'CODE' as const,
   evaluate: async ({ input, output }: CodeEvaluatorParams) => {
-    const features = output?.features ?? [];
+    const features = output ?? [];
     const documents = getSampleDocuments(input);
 
     let totalEvidence = 0;
@@ -251,7 +244,7 @@ const featureCountEvaluator = {
   name: 'feature_count',
   kind: 'CODE' as const,
   evaluate: async ({ output, expected }: CodeEvaluatorParams) => {
-    const count = output?.features?.length ?? 0;
+    const count = (output ?? []).length;
     const { min_features = -Infinity, max_features = Infinity } = expected;
 
     const issues: string[] = [];
@@ -284,7 +277,7 @@ const confidenceBoundsEvaluator = {
   evaluate: async ({ output, expected }: CodeEvaluatorParams) => {
     const { max_confidence = 100 } = expected;
 
-    const features = output?.features ?? [];
+    const features = output ?? [];
     if (features.length === 0) {
       return {
         score: 1,
@@ -325,7 +318,7 @@ const typeAssertionsEvaluator = {
       return { score: 1, explanation: 'No type assertions specified — skipping' };
     }
 
-    const features = output?.features ?? [];
+    const features = output ?? [];
     const presentTypes = new Set(features.map((f) => f.type));
     const issues: string[] = [];
     let totalAssertions = 0;
@@ -389,7 +382,6 @@ export const createFeatureExtractionEvaluators = (scenarioCriteria?: {
     createScenarioCriteriaLlmEvaluator({
       criteriaFn,
       criteria,
-      transformOutput: (output) => (output as { features: unknown }).features,
     }),
   ];
 };

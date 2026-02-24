@@ -10,10 +10,12 @@ import type { ToolingLog } from '@kbn/tooling-log';
 import { createGcsRepository } from '@kbn/es-snapshot-loader';
 import type { GcsConfig } from './snapshot_run_config';
 import { resolveBasePath } from './snapshot_run_config';
+import { ensureLogsIndexTemplate } from './logs_index_template';
 
 const REPLAY_TEMP_PREFIX = 'sigevents-replay-temp-';
 
 const TIMESTAMP_TRANSFORM_SCRIPT = `
+  // Reset the _id field to null to avoid conflicts with subsequent reindex operations
   ctx._id = null;
   if (ctx.containsKey('@timestamp') && ctx['@timestamp'] != null) {
     Instant maxTime = Instant.parse(params.max_timestamp);
@@ -96,30 +98,41 @@ export async function replayIntoManagedStream(
       size: 0,
       aggs: { max_ts: { max: { field: '@timestamp' } } },
     });
+
     const maxTsValue = (maxTsResult.aggregations?.max_ts as { value_as_string?: string })
       ?.value_as_string;
+
     if (!maxTsValue) {
       throw new Error('No @timestamp found in restored snapshot indices');
     }
     log.debug(`Max timestamp from snapshot data: ${maxTsValue}`);
 
-    await esClient.ingest.putPipeline({
-      id: pipelineName,
-      processors: [
-        {
-          script: {
-            lang: 'painless',
-            params: { max_timestamp: maxTsValue },
-            source: TIMESTAMP_TRANSFORM_SCRIPT,
-          },
-        },
-      ],
-    });
+    let logsDs:
+      | {
+          name: string;
+          indices: Array<{ index_name: string }>;
+        }
+      | undefined;
 
-    const dataStreams = await esClient.indices.getDataStream({ name: 'logs' });
-    const logsDs = dataStreams.data_streams[0];
+    try {
+      const dataStreams = await esClient.indices.getDataStream({ name: 'logs' });
+      logsDs = dataStreams.data_streams[0] as typeof logsDs;
+    } catch (err) {
+      const statusCode = (err as { meta?: { statusCode?: number } })?.meta?.statusCode;
+      if (statusCode !== 404) {
+        throw err;
+      }
+
+      log.debug('logs data stream not found — creating it for replay');
+      await ensureLogsIndexTemplate(esClient, log);
+      await esClient.indices.createDataStream({ name: 'logs' });
+
+      const dataStreams = await esClient.indices.getDataStream({ name: 'logs' });
+      logsDs = dataStreams.data_streams[0] as typeof logsDs;
+    }
+
     if (!logsDs) {
-      throw new Error('logs data stream not found — is Streams enabled?');
+      throw new Error('logs data stream not found');
     }
     const writeIndex = logsDs.indices.at(-1);
     if (!writeIndex) {
@@ -132,6 +145,46 @@ export async function replayIntoManagedStream(
       ((settings[writeIndexName]?.settings?.index as Record<string, unknown>)?.default_pipeline as
         | string
         | undefined) ?? '_none';
+
+    let chainedPipelineName: string | undefined =
+      previousDefaultPipeline !== '_none' ? previousDefaultPipeline : undefined;
+
+    if (chainedPipelineName) {
+      try {
+        await esClient.ingest.getPipeline({ id: chainedPipelineName });
+        log.debug(`Chaining existing default_pipeline: ${chainedPipelineName}`);
+      } catch {
+        log.warning(
+          `Write index default_pipeline "${chainedPipelineName}" not found; replay will run without it`
+        );
+        chainedPipelineName = undefined;
+      }
+    } else {
+      log.debug('Write index has no default_pipeline; replay will use timestamp transform only');
+    }
+
+    await esClient.ingest.putPipeline({
+      id: pipelineName,
+      processors: [
+        {
+          script: {
+            lang: 'painless',
+            params: { max_timestamp: maxTsValue },
+            source: TIMESTAMP_TRANSFORM_SCRIPT,
+          },
+        },
+        ...(chainedPipelineName
+          ? [
+              {
+                pipeline: {
+                  name: chainedPipelineName,
+                  ignore_missing_pipeline: true,
+                },
+              },
+            ]
+          : []),
+      ],
+    });
 
     log.debug(`Setting default_pipeline on ${writeIndexName} to ${pipelineName}`);
     await esClient.indices.putSettings({
