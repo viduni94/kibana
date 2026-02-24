@@ -5,35 +5,63 @@
  * 2.0.
  */
 
-import type { BaseFeature } from '@kbn/streams-schema';
-import { identifyFeatures } from '@kbn/streams-ai';
-import { featuresPrompt } from '@kbn/streams-ai/src/features/prompt';
 import { get } from 'lodash';
-import { tags } from '@kbn/scout';
-import { evaluate } from '../src/evaluate';
-import type { StreamsEvaluationWorkerFixtures } from '../src/types';
-import type {
-  FeatureIdentificationEvaluationDataset,
-  FeatureIdentificationEvaluationExample,
-  ValidFeatureType,
-} from './features_identification_datasets';
-import {
-  FEATURE_IDENTIFICATION_DATASETS,
-  VALID_FEATURE_TYPES,
-} from './features_identification_datasets';
+import { selectEvaluators, type EvaluationCriterion, type Evaluator } from '@kbn/evals';
+import type { BaseFeature } from '@kbn/streams-schema';
+import { createScenarioCriteriaLlmEvaluator } from './scenario_criteria_llm_evaluator';
 
-evaluate.describe.configure({ timeout: 300_000 });
+export const VALID_FEATURE_TYPES = [
+  'entity',
+  'infrastructure',
+  'technology',
+  'dependency',
+  'schema',
+] as const;
 
-/**
- * Deterministic CODE evaluators that run alongside the LLM-based criteria evaluator.
- * These verify objectively measurable properties without relying on an LLM judge.
- */
+export type ValidFeatureType = (typeof VALID_FEATURE_TYPES)[number];
+
+export interface FeatureExtractionEvaluationExample {
+  input: {
+    sample_documents: Array<Record<string, any>>;
+  };
+  output: {
+    criteria: EvaluationCriterion[];
+    weight?: number;
+    min_features?: number;
+    max_features?: number;
+    max_confidence?: number;
+    required_types?: ValidFeatureType[];
+    forbidden_types?: ValidFeatureType[];
+  };
+  metadata: {
+    description?: string;
+  };
+}
+
+export interface FeatureIdentificationEvaluationDataset {
+  name: string;
+  description: string;
+  examples: FeatureExtractionEvaluationExample[];
+}
+
+// interface CodeEvaluatorParams {
+//   input: FeatureExtractionEvaluationExample['input'];
+//   output: { features: BaseFeature[] };
+//   expected: FeatureExtractionEvaluationExample['output'];
+//   metadata: FeatureExtractionEvaluationExample['metadata'];
+// }
 
 interface CodeEvaluatorParams {
-  input: FeatureIdentificationEvaluationExample['input'];
+  input: Record<string, unknown>;
   output: { features: BaseFeature[] };
-  expected: FeatureIdentificationEvaluationExample['output'];
-  metadata: FeatureIdentificationEvaluationExample['metadata'];
+  expected: {
+    min_features?: number;
+    max_features?: number;
+    max_confidence?: number;
+    required_types?: ValidFeatureType[];
+    forbidden_types?: ValidFeatureType[];
+  };
+  metadata: Record<string, unknown> | null | undefined;
 }
 
 /**
@@ -158,6 +186,9 @@ function isEvidenceGrounded(evidence: string, documents: Array<Record<string, un
   return false;
 }
 
+const getSampleDocuments = (input: Record<string, unknown>): Array<Record<string, unknown>> =>
+  (input.sample_documents as Array<Record<string, unknown>>) ?? [];
+
 /**
  * Checks that every evidence string in every feature is grounded in the input
  * documents — either as a `field.path=value` snippet matching a document field,
@@ -168,7 +199,7 @@ const evidenceGroundingEvaluator = {
   kind: 'CODE' as const,
   evaluate: async ({ input, output }: CodeEvaluatorParams) => {
     const features = output?.features ?? [];
-    const documents = input.sample_documents;
+    const documents = getSampleDocuments(input);
 
     let totalEvidence = 0;
     let groundedEvidence = 0;
@@ -336,82 +367,29 @@ const typeAssertionsEvaluator = {
   },
 };
 
-const CODE_EVALUATORS = [
-  typeValidationEvaluator,
-  evidenceGroundingEvaluator,
-  featureCountEvaluator,
-  confidenceBoundsEvaluator,
-  typeAssertionsEvaluator,
-];
+export const createFeatureExtractionEvaluators = (scenarioCriteria?: {
+  criteriaFn: (criteria: EvaluationCriterion[]) => Evaluator;
+  criteria: EvaluationCriterion[];
+}) => {
+  const base = selectEvaluators([
+    typeValidationEvaluator,
+    evidenceGroundingEvaluator,
+    featureCountEvaluator,
+    confidenceBoundsEvaluator,
+    typeAssertionsEvaluator,
+  ]);
 
-evaluate.describe(
-  'Streams features identification',
-  { tag: tags.serverless.observability.complete },
-  () => {
-    async function runFeatureIdentificationExperiment(
-      dataset: FeatureIdentificationEvaluationDataset,
-      {
-        phoenixClient,
-        inferenceClient,
-        logger,
-        evaluators,
-      }: Pick<
-        StreamsEvaluationWorkerFixtures,
-        'phoenixClient' | 'inferenceClient' | 'logger' | 'evaluators'
-      >
-    ) {
-      await phoenixClient.runExperiment(
-        {
-          dataset,
-          concurrency: 1,
-          task: async ({ input }: { input: FeatureIdentificationEvaluationExample['input'] }) => {
-            const { features } = await identifyFeatures({
-              streamName: 'test',
-              sampleDocuments: input.sample_documents,
-              systemPrompt: featuresPrompt,
-              inferenceClient,
-              logger,
-              signal: new AbortController().signal,
-            });
-
-            return { features };
-          },
-        },
-        [
-          {
-            name: 'feature_correctness',
-            kind: 'LLM' as const,
-            evaluate: async ({ input, output, expected, metadata }) => {
-              const result = await evaluators.criteria(expected.criteria).evaluate({
-                input,
-                expected,
-                output: output.features,
-                metadata,
-              });
-
-              return result;
-            },
-          },
-          ...CODE_EVALUATORS,
-        ]
-      );
-    }
-
-    // Run evaluation for each dataset
-    FEATURE_IDENTIFICATION_DATASETS.forEach((dataset) => {
-      evaluate.describe(dataset.name, () => {
-        evaluate(
-          'feature identification',
-          async ({ evaluators, inferenceClient, logger, phoenixClient }) => {
-            await runFeatureIdentificationExperiment(dataset, {
-              inferenceClient,
-              logger,
-              phoenixClient,
-              evaluators,
-            });
-          }
-        );
-      });
-    });
+  if (!scenarioCriteria) {
+    return base;
   }
-);
+
+  const { criteriaFn, criteria } = scenarioCriteria;
+  return [
+    ...base,
+    createScenarioCriteriaLlmEvaluator({
+      criteriaFn,
+      criteria,
+      transformOutput: (output) => (output as { features: unknown }).features,
+    }),
+  ];
+};
