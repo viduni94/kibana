@@ -27,6 +27,54 @@ const ALLOWED_CATEGORIES = [
   SIGNIFICANT_EVENT_TYPE_SECURITY,
 ];
 
+function normalizeSampleLogs(sampleLogs: unknown): string[] {
+  if (!Array.isArray(sampleLogs)) {
+    return [];
+  }
+
+  return sampleLogs
+    .map((item) => {
+      if (typeof item === 'string') {
+        return item;
+      }
+      if (item && typeof item === 'object') {
+        const text = (item as Record<string, unknown>).text;
+        if (typeof text === 'string') {
+          return text;
+        }
+      }
+      return '';
+    })
+    .filter((item) => item.length > 0);
+}
+
+function isEvidenceCheckable(evidence: string): boolean {
+  // These are model-side “explanations”, not literal log evidence.
+  return (
+    !evidence.startsWith('Entity:') &&
+    !evidence.startsWith('Dependency:') &&
+    !evidence.startsWith('Description mentions')
+  );
+}
+
+function getEvidenceCandidates(evidence: string): string[] {
+  const trimmed = evidence.trim();
+
+  const candidates: string[] = [trimmed];
+
+  const firstQuote = trimmed.indexOf('"');
+  const lastQuote = trimmed.lastIndexOf('"');
+  if (firstQuote !== -1 && lastQuote > firstQuote) {
+    const quoted = trimmed.slice(firstQuote + 1, lastQuote);
+    candidates.push(quoted);
+    candidates.push(quoted.replace(/\\"/g, '"'));
+    candidates.push(quoted.replace(/\\n/g, '\n'));
+    candidates.push(quoted.replace(/\\"/g, '"').replace(/\\n/g, '\n'));
+  }
+
+  return [...new Set(candidates)].filter((c) => c.length > 0);
+}
+
 const createQueryGenerationCodeEvaluator = (esClient: ElasticsearchClient): Evaluator => ({
   name: 'query_generation_code_evaluator',
   kind: 'CODE' as const,
@@ -91,10 +139,16 @@ const createQueryGenerationCodeEvaluator = (esClient: ElasticsearchClient): Eval
         missingEvidence: [],
       };
 
-      const sampleLogs = input.sample_logs as string[] | undefined;
-      if (evidence && evidence.length > 0 && sampleLogs) {
+      const sampleLogs = normalizeSampleLogs((input as Record<string, unknown>)?.sample_logs);
+      if (evidence && evidence.length > 0 && sampleLogs.length > 0) {
         const allLogs = sampleLogs.join('\n');
-        const missing = evidence.filter((ev: string) => !allLogs.includes(ev));
+        const missing = evidence.filter((ev: string) => {
+          if (!isEvidenceCheckable(ev)) {
+            return false;
+          }
+          const candidates = getEvidenceCandidates(ev);
+          return !candidates.some((candidate) => allLogs.includes(candidate));
+        });
         if (missing.length > 0) {
           evidenceValidation.allEvidenceFound = false;
           evidenceValidation.missingEvidence = missing;

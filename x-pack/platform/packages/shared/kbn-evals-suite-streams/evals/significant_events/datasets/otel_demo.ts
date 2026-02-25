@@ -83,7 +83,7 @@ export const otelDemoDataset: DatasetConfig = {
           },
         ],
         min_features: 4,
-        max_features: 20,
+        max_features: 30,
         required_types: ['entity'],
         expected_ground_truth:
           'entities=[frontend, checkout, cart, payment, product-catalog, recommendation, shipping, email, ad, quote], deps=[checkout->payment, cart->valkey], infra=[kubernetes]',

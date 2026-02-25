@@ -17,6 +17,7 @@ import {
   canonicalFeaturesFromExpectedGroundTruth,
   listAvailableSnapshots,
   loadFeaturesFromSnapshot,
+  cleanSignificantEventsDataStreams,
   replayIntoManagedStream,
   SIGEVENTS_SNAPSHOT_RUN,
 } from '../../../src/data_generators/replay';
@@ -55,6 +56,22 @@ evaluate.describe(
               return;
             }
 
+            // Keep the Scout ES reasonably clean across runs so enabling Streams
+            // doesn't fail due to leftover indices/data streams.
+            await cleanSignificantEventsDataStreams(esClient, log);
+
+            // Streams enable creates/uses `logs.otel` and `logs.ecs`. If they exist as regular indices
+            // or were left behind by a previous failed run, enabling can fail with 400.
+            for (const name of ['logs.otel', 'logs.ecs']) {
+              await esClient.indices.deleteDataStream({ name }).catch(() => {});
+              await esClient.indices
+                .delete({ index: name, ignore_unavailable: true })
+                .catch(() => {});
+            }
+
+            // Streams enablement can fail with 400 if the cluster is left in a partially enabled state.
+            // Make it idempotent by attempting a disable first.
+            await apiServices.streams.disable().catch(() => {});
             await apiServices.streams.enable();
 
             const extractionScenario = activeDataset.featureExtraction.find(
@@ -126,7 +143,31 @@ evaluate.describe(
 
             sampleLogs = searchResult.hits.hits.map((hit) => {
               const source = hit._source as Record<string, unknown>;
-              return (source.message as string) || (source.body as string) || '';
+              const message = source.message;
+              if (typeof message === 'string') {
+                return message;
+              }
+
+              const body = source.body;
+              if (typeof body === 'string') {
+                return body;
+              }
+              if (body && typeof body === 'object') {
+                const bodyText = (body as Record<string, unknown>).text;
+                if (typeof bodyText === 'string') {
+                  return bodyText;
+                }
+              }
+
+              const attributes = source.attributes;
+              if (attributes && typeof attributes === 'object') {
+                const msg = (attributes as Record<string, unknown>).msg;
+                if (typeof msg === 'string') {
+                  return msg;
+                }
+              }
+
+              return '';
             });
 
             testIndex = [
@@ -141,6 +182,7 @@ evaluate.describe(
               { create: { _index: testIndex } },
               hit._source as Record<string, unknown>,
             ]);
+
             await esClient.bulk({ refresh: true, body: bulkBody });
           });
 

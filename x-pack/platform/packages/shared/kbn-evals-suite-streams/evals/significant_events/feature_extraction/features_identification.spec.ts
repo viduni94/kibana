@@ -88,7 +88,7 @@ evaluate.describe(
                   input: { sample_documents: Array<Record<string, unknown>> };
                 }) => {
                   const { features } = await identifyFeatures({
-                    streamName: `logs.otel.${scenario.input.scenario_id}`,
+                    streamName: 'logs',
                     sampleDocuments: input.sample_documents,
                     systemPrompt: featuresPrompt,
                     inferenceClient,

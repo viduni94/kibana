@@ -29,7 +29,7 @@ export async function replaySignificantEventsSnapshot(
     log,
     repository: createGcsRepository({ bucket: gcs.bucket, basePath }),
     snapshotName,
-    patterns: ['logs*'],
+    patterns: ['logs'],
   });
 }
 
@@ -38,9 +38,15 @@ export async function cleanSignificantEventsDataStreams(
   log: ToolingLog
 ): Promise<void> {
   try {
-    await esClient.indices.deleteDataStream({ name: 'logs*' });
+    await esClient.indices.deleteDataStream({ name: 'logs' });
   } catch {
     log.debug('No logs data stream to delete');
+  }
+
+  try {
+    await esClient.indices.delete({ index: 'logs', ignore_unavailable: true });
+  } catch {
+    log.debug('Failed to delete logs index (may be a data stream or not exist)');
   }
 
   await deleteLogsIndexTemplate(esClient, log);
