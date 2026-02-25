@@ -10,6 +10,7 @@ import { significantEventsPrompt } from '@kbn/streams-ai/src/significant_events/
 import { tags } from '@kbn/scout';
 import kbnDatemath from '@kbn/datemath';
 import type { Feature } from '@kbn/streams-schema';
+import { ALWAYS_CONDITION } from '@kbn/streamlang';
 import { evaluate } from '../../../src/evaluate';
 import { activeDataset } from '../datasets';
 import {
@@ -21,30 +22,12 @@ import {
 } from '../../../src/data_generators/replay';
 import { createQueryGenerationEvaluators } from '../../../src/evaluators/query_generation_evaluators';
 import { createScenarioCriteriaLlmEvaluator } from '../../../src/evaluators/scenario_criteria_llm_evaluator';
+import { FEATURE_SOURCES_TO_RUN } from './resolve_feature_sources';
 
 const INDEX_REFRESH_WAIT_MS = 2500;
 const SAMPLE_DOCS_SIZE = 500;
 
 const { gcs } = activeDataset;
-
-const resolveFeatureSourcesToRun = (
-  source: string | undefined
-): Array<'auto' | 'canonical' | 'snapshot'> => {
-  // Default to running both variants so results are directly comparable.
-  if (source == null || source === 'both') {
-    return ['canonical', 'snapshot'];
-  }
-
-  if (source === 'canonical' || source === 'snapshot' || source === 'auto') {
-    return [source];
-  }
-
-  return ['auto'];
-};
-
-const FEATURE_SOURCES_TO_RUN = resolveFeatureSourcesToRun(
-  process.env.SIGEVENTS_QUERYGEN_FEATURES_SOURCE
-);
 
 evaluate.describe(
   'Significant events query generation',
@@ -112,7 +95,7 @@ evaluate.describe(
             features = resolvedFeatures;
             if (features.length === 0) {
               let details =
-                'Ensure the snapshot was created with .kibana_streams_features included.';
+                'Ensure the snapshot was created with sigevents-streams-features-<scenario> included.';
               if (shouldUseCanonical) {
                 details =
                   'No canonical features could be derived from dataset ground truth. Either improve expected_ground_truth formatting or set SIGEVENTS_QUERYGEN_FEATURES_SOURCE=snapshot.';
@@ -198,6 +181,12 @@ evaluate.describe(
                     const { stream } = await apiServices.streams.getStreamDefinition(testIndex);
                     const { queries } = await generateSignificantEvents({
                       stream,
+                      system: {
+                        type: 'system',
+                        name: scenario.input.stream_name,
+                        description: scenario.input.stream_description,
+                        filter: ALWAYS_CONDITION,
+                      },
                       start: kbnDatemath.parse('now-24h')!.valueOf(),
                       end: kbnDatemath.parse('now')!.valueOf(),
                       esClient,
@@ -208,7 +197,7 @@ evaluate.describe(
                       getFeatures: async () => features,
                     });
 
-                    return { queries };
+                    return queries;
                   },
                 },
                 createQueryGenerationEvaluators(esClient, {

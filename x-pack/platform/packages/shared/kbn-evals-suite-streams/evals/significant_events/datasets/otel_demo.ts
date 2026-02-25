@@ -23,7 +23,7 @@ export const otelDemoDataset: DatasetConfig = {
         criteria: [
           {
             id: 'entity-frontend',
-            text: 'Must identify frontend service as an entity (evidence: resource.attributes.app=frontend)',
+            text: 'Must identify frontend service as an entity (evidence: resource.attributes.app=frontend OR resource.attributes.app.kubernetes.io/name=frontend OR resource.attributes.k8s.deployment.name=frontend)',
             score: 1,
           },
           {
@@ -43,7 +43,7 @@ export const otelDemoDataset: DatasetConfig = {
           },
           {
             id: 'entity-product-catalog',
-            text: 'Must identify product-catalog service as an entity (evidence: resource.attributes.app=product-catalog)',
+            text: 'Must identify product-catalog service as an entity (evidence: resource.attributes.app=product-catalog OR resource.attributes.app.kubernetes.io/name=product-catalog OR resource.attributes.k8s.deployment.name=product-catalog)',
             score: 1,
           },
           {

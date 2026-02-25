@@ -11,12 +11,12 @@ import { createGcsRepository } from '@kbn/es-snapshot-loader';
 import type { Feature } from '@kbn/streams-schema';
 import type { GcsConfig } from './snapshot_run_config';
 import { resolveBasePath } from './snapshot_run_config';
+import { getSigeventsSnapshotFeaturesIndex } from './sigevents_features_index';
 
-const FEATURES_INDEX = '.kibana_streams_features';
 const FEATURES_TEMP_INDEX = 'sigevents-replay-temp-features';
 
 /**
- * Restores `.kibana_streams_features` from a snapshot and returns all
+ * Restores sigevents-captured features from a snapshot and returns all
  * {@link Feature} documents for the given stream. The temp index is cleaned
  * up before returning.
  */
@@ -30,6 +30,7 @@ export async function loadFeaturesFromSnapshot(
   const basePath = resolveBasePath(gcs);
   const repoName = `sigevents-features-${Date.now()}`;
   const repository = createGcsRepository({ bucket: gcs.bucket, basePath });
+  const featuresIndex = getSigeventsSnapshotFeaturesIndex(snapshotName);
 
   try {
     repository.validate();
@@ -44,17 +45,18 @@ export async function loadFeaturesFromSnapshot(
       throw new Error(`Snapshot "${snapshotName}" not found`);
     }
 
-    const hasFeatures = (snap.indices ?? []).includes(FEATURES_INDEX);
+    const hasFeatures = (snap.indices ?? []).includes(featuresIndex);
     if (!hasFeatures) {
-      log.warning(`Snapshot "${snapshotName}" does not contain ${FEATURES_INDEX}`);
+      log.warning(`Snapshot "${snapshotName}" does not contain "${featuresIndex}"`);
       return [];
     }
 
+    await esClient.indices.delete({ index: FEATURES_TEMP_INDEX, ignore_unavailable: true });
     await esClient.snapshot.restore({
       repository: repoName,
       snapshot: snapshotName,
       wait_for_completion: true,
-      indices: FEATURES_INDEX,
+      indices: featuresIndex,
       include_global_state: false,
       rename_pattern: '(.+)',
       rename_replacement: FEATURES_TEMP_INDEX,
