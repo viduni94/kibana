@@ -20,7 +20,7 @@ function sanitizeIndexComponent(value: string): string {
 }
 
 /**
- * Name of the non-system index that stores Streams-extracted features for a
+ * Name of the non-system index that stores extracted features for a
  * given snapshot scenario.
  *
  * We intentionally keep this as a **regular** index (no leading `.`) so it can
