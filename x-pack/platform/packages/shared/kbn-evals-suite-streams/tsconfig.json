@@ -26,5 +26,6 @@
     "@kbn/dissect-heuristics",
     "@kbn/es-query",
     "@kbn/inference-common",
+    "@kbn/es-snapshot-loader"
   ]
 }
