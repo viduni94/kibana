@@ -7,7 +7,7 @@
 
 import type { Feature } from '@kbn/streams-schema';
 
-const CANONICAL_LAST_SEEN = '2026-01-01T00:00:00.000Z';
+export const CANONICAL_LAST_SEEN = '2026-01-01T00:00:00.000Z';
 
 const normalizeIdPart = (value: string): string =>
   value

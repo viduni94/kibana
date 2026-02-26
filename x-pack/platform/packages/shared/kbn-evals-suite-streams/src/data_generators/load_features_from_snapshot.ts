@@ -13,7 +13,7 @@ import type { GcsConfig } from './snapshot_run_config';
 import { resolveBasePath } from './snapshot_run_config';
 import { getSigeventsSnapshotFeaturesIndex } from './sigevents_features_index';
 
-const FEATURES_TEMP_INDEX = 'sigevents-replay-temp-features';
+export const FEATURES_TEMP_INDEX = 'sigevents-replay-temp-features';
 
 /**
  * Restores sigevents-captured features from a snapshot and returns all
