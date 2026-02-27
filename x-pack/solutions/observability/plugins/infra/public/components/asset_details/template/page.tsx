@@ -8,12 +8,18 @@
 import React, { useEffect } from 'react';
 import { EuiLoadingSpinner } from '@elastic/eui';
 import { capitalize } from 'lodash';
+import { i18n } from '@kbn/i18n';
+import {
+  OBSERVABILITY_AGENT_ID,
+  OBSERVABILITY_HOST_ATTACHMENT_TYPE_ID,
+} from '@kbn/observability-agent-builder-plugin/public';
 import { useMetricsBreadcrumbs } from '../../../hooks/use_metrics_breadcrumbs';
 import { useParentBreadcrumbResolver } from '../../../hooks/use_parent_breadcrumb_resolver';
 import { useKibanaContextForPlugin } from '../../../hooks/use_kibana';
 import { ASSET_DETAILS_PAGE_COMPONENT_NAME } from '../constants';
 import { Content } from '../content/content';
 import { useAssetDetailsRenderPropsContext } from '../hooks/use_asset_details_render_props';
+import { useDatePickerContext } from '../hooks/use_date_picker';
 import { useMetadataStateContext } from '../hooks/use_metadata_state';
 import { usePageHeader } from '../hooks/use_page_header';
 import { useTabSwitcherContext } from '../hooks/use_tab_switcher';
@@ -27,10 +33,11 @@ export const Page = ({ tabs = [], links = [] }: ContentTemplateProps) => {
   const { metadata, loading: metadataLoading } = useMetadataStateContext();
   const { rightSideItems, tabEntries, breadcrumbs: headerBreadcrumbs } = usePageHeader(tabs, links);
   const { entity, loading, schema } = useAssetDetailsRenderPropsContext();
+  const { getParsedDateRange } = useDatePickerContext();
   const trackOnlyOnce = React.useRef(false);
   const { activeTabId } = useTabSwitcherContext();
   const {
-    services: { telemetry },
+    services: { telemetry, agentBuilder },
   } = useKibanaContextForPlugin();
 
   const parentBreadcrumbResolver = useParentBreadcrumbResolver();
@@ -72,6 +79,40 @@ export const Page = ({ tabs = [], links = [] }: ContentTemplateProps) => {
       trackOnlyOnce.current = true;
     }
   }, [activeTabId, entity.type, metadata, metadataLoading, telemetry, schema]);
+
+  // Configure agent builder global flyout with the host attachment
+  useEffect(() => {
+    if (!agentBuilder || loading || entity.type !== 'host' || !entity.name) {
+      return;
+    }
+
+    const { from, to } = getParsedDateRange();
+    if (!from || !to) {
+      return;
+    }
+
+    agentBuilder.setConversationFlyoutActiveConfig({
+      agentId: OBSERVABILITY_AGENT_ID,
+      attachments: [
+        {
+          type: OBSERVABILITY_HOST_ATTACHMENT_TYPE_ID,
+          data: {
+            hostName: entity.name,
+            start: from,
+            end: to,
+            attachmentLabel: i18n.translate('xpack.infra.assetDetails.hostAttachmentLabel', {
+              defaultMessage: '{hostName} host',
+              values: { hostName: entity.name },
+            }),
+          },
+        },
+      ],
+    });
+
+    return () => {
+      agentBuilder.clearConversationFlyoutActiveConfig();
+    };
+  }, [agentBuilder, entity.name, entity.type, getParsedDateRange, loading]);
 
   return (
     <InfraPageTemplate

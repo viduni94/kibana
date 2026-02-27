@@ -8,6 +8,7 @@
 import type { KibanaRequest } from '@kbn/core/server';
 import type { ChangePointType } from '@kbn/es-types/src';
 import type { GetSLOParams, GetSLOResponse } from '@kbn/slo-schema';
+import type { Transaction } from '@kbn/apm-types';
 import type { QueryDslQueryContainer } from '@elastic/elasticsearch/lib/api/types';
 
 type ServiceHealthStatus = 'healthy' | 'warning' | 'critical' | 'unknown';
@@ -255,4 +256,21 @@ export interface ObservabilityAgentBuilderDataRegistryTypes {
     end: number;
     filter: QueryDslQueryContainer[];
   }) => Promise<ApmConnectionStatsEntry[]>;
+
+  apmTransactionDetails: (params: {
+    request: KibanaRequest;
+    serviceName: string;
+    transactionName: string;
+    transactionId?: string;
+    traceId?: string;
+    start: string;
+    end: string;
+  }) => Promise<
+    | {
+        transaction?: Transaction;
+        transactionId?: string;
+        traceId?: string;
+      }
+    | undefined
+  >;
 }

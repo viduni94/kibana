@@ -6,11 +6,17 @@
  */
 
 import { EuiSpacer, EuiTitle } from '@elastic/eui';
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useHistory } from 'react-router-dom';
+import { i18n } from '@kbn/i18n';
+import {
+  OBSERVABILITY_AGENT_ID,
+  OBSERVABILITY_TRANSACTION_ATTACHMENT_TYPE_ID,
+} from '@kbn/observability-agent-builder-plugin/public';
 import { useApmServiceContext } from '../../../context/apm_service/use_apm_service_context';
 import { useBreadcrumb } from '../../../context/breadcrumbs/use_breadcrumb';
 import { ChartPointerEventContextProvider } from '../../../context/chart_pointer_event/chart_pointer_event_context';
+import { useApmPluginContext } from '../../../context/apm_plugin/use_apm_plugin_context';
 import { useAnyOfApmParams } from '../../../hooks/use_apm_params';
 import { useApmRouter } from '../../../hooks/use_apm_router';
 import { useTimeRange } from '../../../hooks/use_time_range';
@@ -34,11 +40,14 @@ export function TransactionDetails() {
     offset,
     environment,
     kuery,
+    traceId,
+    transactionId,
   } = query;
   const { start, end } = useTimeRange({ rangeFrom, rangeTo });
   const apmRouter = useApmRouter();
   const { transactionType, fallbackToTransactions, serverlessType, serviceName } =
     useApmServiceContext();
+  const { agentBuilder } = useApmPluginContext();
 
   const history = useHistory();
 
@@ -59,6 +68,60 @@ export function TransactionDetails() {
   );
 
   const isServerless = isServerlessAgentName(serverlessType);
+
+  // Configure agent builder global flyout with the transaction attachment
+  useEffect(() => {
+    if (
+      !agentBuilder ||
+      !serviceName ||
+      !transactionName ||
+      !transactionTypeFromUrl ||
+      !start ||
+      !end
+    ) {
+      return;
+    }
+
+    agentBuilder.setConversationFlyoutActiveConfig({
+      agentId: OBSERVABILITY_AGENT_ID,
+      attachments: [
+        {
+          type: OBSERVABILITY_TRANSACTION_ATTACHMENT_TYPE_ID,
+          data: {
+            serviceName,
+            environment,
+            transactionName,
+            transactionType: transactionTypeFromUrl,
+            traceId,
+            transactionId,
+            start,
+            end,
+            attachmentLabel: i18n.translate(
+              'xpack.apm.transactionDetails.transactionAttachmentLabel',
+              {
+                defaultMessage: '{transactionName} transaction',
+                values: { transactionName },
+              }
+            ),
+          },
+        },
+      ],
+    });
+
+    return () => {
+      agentBuilder.clearConversationFlyoutActiveConfig();
+    };
+  }, [
+    agentBuilder,
+    serviceName,
+    environment,
+    transactionName,
+    transactionTypeFromUrl,
+    traceId,
+    transactionId,
+    start,
+    end,
+  ]);
 
   return (
     <>
