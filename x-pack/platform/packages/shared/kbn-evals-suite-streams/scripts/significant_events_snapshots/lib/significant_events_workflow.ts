@@ -6,8 +6,12 @@
  */
 
 import type { Client } from '@elastic/elasticsearch';
+import type { Flags } from '@kbn/dev-cli-runner';
 import type { ToolingLog } from '@kbn/tooling-log';
-import type { Feature } from '@kbn/streams-schema';
+import type { Feature, Streams } from '@kbn/streams-schema';
+import { generateAllComputedFeatures } from '@kbn/streams-ai';
+import { toolingLogToLogger } from '@kbn/kibana-api-cli';
+import { v5 as uuidv5 } from 'uuid';
 import type { ConnectionConfig } from './get_connection_config';
 import { kibanaRequest } from './kibana';
 import { FEATURE_EXTRACTION_POLL_INTERVAL_MS, FEATURE_EXTRACTION_TIMEOUT_MS } from './constants';
@@ -125,9 +129,22 @@ export async function persistSigEventsExtractedFeaturesForSnapshot(
   esClient: Client,
   log: ToolingLog,
   snapshotName: string,
-  streamName: string = 'logs'
+  streamName: string = 'logs',
+  additionalFeatures: Feature[] = []
 ): Promise<{ index: string; count: number }> {
-  const features = await fetchSigEventsExtractedFeatures(config, log, streamName);
+  const inferredFeatures = await fetchSigEventsExtractedFeatures(config, log, streamName);
+
+  const mergedById = new Map<string, Feature>();
+  for (const feature of inferredFeatures) {
+    mergedById.set(feature.id, feature);
+  }
+
+  for (const feature of additionalFeatures) {
+    mergedById.set(feature.id, feature);
+  }
+
+  const features = Array.from(mergedById.values());
+
   const index = getSigeventsSnapshotFeaturesIndex(snapshotName);
 
   await esClient.indices.delete({ index, ignore_unavailable: true });
@@ -174,8 +191,63 @@ export async function persistSigEventsExtractedFeaturesForSnapshot(
     }
   }
 
-  log.info(`Persisted ${features.length} features to "${index}" for snapshotting`);
+  log.info(
+    `Persisted ${features.length} features to "${index}" for snapshotting ` +
+      `(${inferredFeatures.length} inferred + ${additionalFeatures.length} computed, ` +
+      `${inferredFeatures.length + additionalFeatures.length - features.length} duplicates removed)`
+  );
   return { index, count: features.length };
+}
+
+/**
+ * Generates computed features (dataset_analysis, log_samples, log_patterns,
+ * error_logs) directly from the indexed data. This mirrors what the production
+ * `features_identification` task does via {@link generateAllComputedFeatures},
+ * ensuring the snapshot always contains field-level context the LLM needs for
+ * proper KQL generation.
+ */
+export async function generateComputedFeaturesForSnapshot({
+  esClient,
+  log,
+  flags,
+  streamName,
+  start,
+  end,
+}: {
+  esClient: Client;
+  log: ToolingLog;
+  flags: Flags;
+  streamName: string;
+  start: number;
+  end: number;
+}): Promise<Feature[]> {
+  log.info('Generating computed features from indexed data...');
+
+  const stream = { name: streamName } as Streams.all.Definition;
+  const logger = toolingLogToLogger({ flags, log });
+
+  const baseFeatures = await generateAllComputedFeatures({
+    stream,
+    start,
+    end,
+    esClient,
+    logger,
+  });
+
+  const now = new Date().toISOString();
+  const features: Feature[] = baseFeatures.map((bf) => ({
+    ...bf,
+    status: 'active' as const,
+    last_seen: now,
+    uuid: uuidv5(`${streamName}:${bf.id}`, uuidv5.DNS),
+  }));
+
+  log.info(`Generated ${features.length} computed features:`);
+  for (const f of features) {
+    log.info(`  - ${f.type}: ${f.description}`);
+  }
+
+  return features;
 }
 
 export async function cleanupSigEventsExtractedFeaturesData(
