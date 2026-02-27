@@ -38,6 +38,7 @@ dependsOn:
   - '@kbn/es-query'
   - '@kbn/inference-common'
   - '@kbn/es-snapshot-loader'
+  - '@kbn/es-errors'
 tags:
   - functional-tests
   - package
