@@ -46,7 +46,14 @@ const createQueryGenerationCodeEvaluator = (esClient: ElasticsearchClient): Eval
 
     let validSyntaxCount = 0;
     let executionHitCount = 0;
-    const validationDetails = [];
+    const validationDetails: Array<{
+      kql: string;
+      isSyntaxValid: boolean;
+      isExecutionHit: boolean;
+      isCategoryCompliant: boolean;
+      isSeverityCompliant: boolean;
+      evidenceValidation: { allEvidenceFound: boolean; missingEvidence: string[] };
+    }> = [];
 
     for (const query of queries) {
       const { kql, category, severity_score, evidence } = query;
