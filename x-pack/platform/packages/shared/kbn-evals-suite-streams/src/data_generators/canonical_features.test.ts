@@ -36,9 +36,8 @@ describe('canonical_features', () => {
       name: 'kubernetes',
     });
 
-    // Deterministic uuid prefix
-    expect(getFeatureById(features, 'entity-frontend')?.uuid).toBe(
-      'canonical-payment-unreachable-entity-frontend'
+    expect(getFeatureById(features, 'entity-frontend')?.uuid).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-a[0-9a-f]{3}-[0-9a-f]{12}$/
     );
     // Stable last_seen for canonical features
     expect(getFeatureById(features, 'entity-frontend')?.last_seen).toBe(CANONICAL_LAST_SEEN);
@@ -78,5 +77,22 @@ describe('canonical_features', () => {
 
     expect(features.some((feature) => feature.id === 'entity-payment')).toBe(true);
     expect(features.some((feature) => feature.id.includes('nodejs'))).toBe(false);
+  });
+
+  it('generates stable uuids for the same scenario and feature id', () => {
+    const firstRun = canonicalFeaturesFromExpectedGroundTruth({
+      streamName: 'logs',
+      scenarioId: 'payment-unreachable',
+      expectedGroundTruth: 'entities=[frontend]',
+    });
+    const secondRun = canonicalFeaturesFromExpectedGroundTruth({
+      streamName: 'logs',
+      scenarioId: 'payment-unreachable',
+      expectedGroundTruth: 'entities=[frontend]',
+    });
+
+    expect(getFeatureById(firstRun, 'entity-frontend')?.uuid).toBe(
+      getFeatureById(secondRun, 'entity-frontend')?.uuid
+    );
   });
 });

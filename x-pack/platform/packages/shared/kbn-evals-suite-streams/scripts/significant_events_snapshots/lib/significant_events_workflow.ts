@@ -163,7 +163,15 @@ export async function persistSigEventsExtractedFeaturesForSnapshot(
 
     await esClient.bulk({ refresh: true, operations });
   } else {
-    await esClient.indices.refresh({ index });
+    try {
+      await esClient.indices.refresh({ index });
+    } catch (error) {
+      throw new Error(
+        `Failed to refresh features index "${index}" before snapshotting: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
   }
 
   log.info(`Persisted ${features.length} features to "${index}" for snapshotting`);
