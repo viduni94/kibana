@@ -23,7 +23,7 @@ describe('snapshot_run_config', () => {
     jest.resetModules();
 
     const mod = await import('./snapshot_run_config');
-    expect(mod.SIGEVENTS_SNAPSHOT_RUN).toBe('2026-02-25');
+    expect(mod.SIGEVENTS_SNAPSHOT_RUN).toBe('2026-02-27');
   });
 
   it('uses SIGEVENTS_SNAPSHOT_RUN from env when set', async () => {
