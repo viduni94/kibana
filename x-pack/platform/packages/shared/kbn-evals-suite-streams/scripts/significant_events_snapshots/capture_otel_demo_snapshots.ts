@@ -6,7 +6,6 @@
  */
 
 import { run } from '@kbn/dev-cli-runner';
-import type { Flags } from '@kbn/dev-cli-runner';
 import type { ToolingLog } from '@kbn/tooling-log';
 import { Client } from '@elastic/elasticsearch';
 import moment from 'moment';
@@ -19,7 +18,6 @@ import {
   cleanupSigEventsExtractedFeaturesData,
   disableStreams,
   enableSignificantEvents,
-  generateComputedFeaturesForSnapshot,
   logSigEventsExtractedFeatures,
   persistSigEventsExtractedFeaturesForSnapshot,
   triggerSigEventsFeatureExtraction,
@@ -85,7 +83,7 @@ run(
     await registerGcsRepository(esClient, log, runId);
 
     for (const scenario of selectedScenarios) {
-      await processScenario(scenario, config, connectorId, runId, esClient, log, flags);
+      await processScenario(scenario, config, connectorId, runId, esClient, log);
     }
 
     log.info('');
@@ -103,9 +101,7 @@ run(
     log.info('');
     log.info('Each snapshot contains:');
     log.info('  logs*                        - OTel Demo log data');
-    log.info(
-      '  sigevents-streams-features-* - LLM-extracted + computed features (dataset_analysis, log_samples, log_patterns, error_logs)'
-    );
+    log.info('  sigevents-streams-features-* - Extracted features (inferred + computed)');
     log.info('');
     log.info(`To use in evals, update SIGEVENTS_SNAPSHOT_RUN in replay.ts to "${runId}"`);
   },
@@ -165,8 +161,7 @@ async function processScenario(
   connectorId: string,
   runId: string,
   esClient: Client,
-  log: ToolingLog,
-  flags: Flags
+  log: ToolingLog
 ): Promise<void> {
   log.info('');
   log.info('='.repeat(70));
@@ -203,32 +198,14 @@ async function processScenario(
       log.info('[4/7] Skipped (healthy baseline)');
     }
 
-    // Step 5 — Run feature extraction and generate computed features
-    // (extracted features + computed features will be stored as part of the snapshot)
+    // Step 5 — Run feature extraction (the task generates both inferred and computed features)
     log.info('[5/7] Running feature extraction...');
     await enableSignificantEvents(config, log);
     await triggerSigEventsFeatureExtraction(config, log, connectorId);
     await waitForSigEventsFeatureExtraction(config, log);
     await logSigEventsExtractedFeatures(config, log);
 
-    const now = Date.now();
-    const computedFeatures = await generateComputedFeaturesForSnapshot({
-      esClient,
-      log,
-      flags,
-      streamName: 'logs',
-      start: now - 24 * 60 * 60 * 1000,
-      end: now,
-    });
-
-    await persistSigEventsExtractedFeaturesForSnapshot(
-      config,
-      esClient,
-      log,
-      scenario.id,
-      'logs',
-      computedFeatures
-    );
+    await persistSigEventsExtractedFeaturesForSnapshot(config, esClient, log, scenario.id);
 
     // Step 6 — Create a snapshot of the logs and extracted features
     log.info('[6/7] Creating GCS snapshot...');
