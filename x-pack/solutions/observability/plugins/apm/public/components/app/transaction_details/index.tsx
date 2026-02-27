@@ -89,7 +89,6 @@ export function TransactionDetails() {
           type: OBSERVABILITY_TRANSACTION_ATTACHMENT_TYPE_ID,
           data: {
             serviceName,
-            environment,
             transactionName,
             transactionType: transactionTypeFromUrl,
             traceId,
