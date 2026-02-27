@@ -204,7 +204,6 @@ async function processScenario(
     await triggerSigEventsFeatureExtraction(config, log, connectorId);
     await waitForSigEventsFeatureExtraction(config, log);
     await logSigEventsExtractedFeatures(config, log);
-
     await persistSigEventsExtractedFeaturesForSnapshot(config, esClient, log, scenario.id);
 
     // Step 6 — Create a snapshot of the logs and extracted features
