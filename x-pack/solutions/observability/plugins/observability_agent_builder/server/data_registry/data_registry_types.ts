@@ -166,6 +166,12 @@ export type ApmConnectionStatsEntry =
       metrics: TraceMetrics;
     };
 
+export interface ApmTransactionDetailsResponse {
+  transaction?: Transaction;
+  transactionId?: string;
+  traceId?: string;
+}
+
 export interface ObservabilityAgentBuilderDataRegistryTypes {
   apmErrorDetails: (params: {
     request: KibanaRequest;
@@ -265,12 +271,5 @@ export interface ObservabilityAgentBuilderDataRegistryTypes {
     traceId?: string;
     start: string;
     end: string;
-  }) => Promise<
-    | {
-        transaction?: Transaction;
-        transactionId?: string;
-        traceId?: string;
-      }
-    | undefined
-  >;
+  }) => Promise<ApmTransactionDetailsResponse>;
 }

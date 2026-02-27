@@ -18,7 +18,6 @@ const GET_TRANSACTION_DETAILS_TOOL_ID = 'get_transaction_details';
 
 const transactionDataSchema = observabilityAttachmentDataSchema.extend({
   serviceName: z.string(),
-  environment: z.string(),
   transactionName: z.string(),
   transactionType: z.string(),
   traceId: z.string().optional(),
@@ -49,7 +48,8 @@ export function createTransactionAttachmentType({
       return { valid: false, error: parsed.error.message };
     },
     format: (attachment) => {
-      const { serviceName, transactionName, transactionType } = attachment.data;
+      const { serviceName, transactionName, transactionType, transactionId, traceId, start, end } =
+        attachment.data;
 
       return {
         getRepresentation: () => ({
@@ -66,7 +66,12 @@ export function createTransactionAttachmentType({
               try {
                 const transactionDetails = await dataRegistry.getData('apmTransactionDetails', {
                   request: context.request,
-                  ...attachment.data,
+                  serviceName,
+                  transactionName,
+                  transactionId,
+                  traceId,
+                  start,
+                  end,
                 });
 
                 if (!transactionDetails?.transaction) {

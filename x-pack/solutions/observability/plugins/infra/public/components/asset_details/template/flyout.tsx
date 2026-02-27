@@ -7,18 +7,13 @@
 
 import { EuiFlyout, EuiFlyoutBody, EuiFlyoutHeader, useGeneratedHtmlId } from '@elastic/eui';
 import React, { useCallback, useEffect } from 'react';
-import { i18n } from '@kbn/i18n';
-import {
-  OBSERVABILITY_AGENT_ID,
-  OBSERVABILITY_HOST_ATTACHMENT_TYPE_ID,
-} from '@kbn/observability-agent-builder-plugin/public';
 import { useKibanaContextForPlugin } from '../../../hooks/use_kibana';
 import { ASSET_DETAILS_FLYOUT_COMPONENT_NAME } from '../constants';
 import { Content } from '../content/content';
 import { FlyoutHeader } from '../header/flyout_header';
 import { useAssetDetailsRenderPropsContext } from '../hooks/use_asset_details_render_props';
 import { useAssetDetailsUrlState } from '../hooks/use_asset_details_url_state';
-import { useDatePickerContext } from '../hooks/use_date_picker';
+import { useHostAttachmentConfig } from '../hooks/use_host_attachment_config';
 import { usePageHeader } from '../hooks/use_page_header';
 import { useTabSwitcherContext } from '../hooks/use_tab_switcher';
 import type { ContentTemplateProps } from '../types';
@@ -32,10 +27,12 @@ export const Flyout = ({
   const { entity, loading, schema } = useAssetDetailsRenderPropsContext();
   const { rightSideItems, tabEntries } = usePageHeader(tabs, links);
   const { activeTabId } = useTabSwitcherContext();
-  const { getParsedDateRange } = useDatePickerContext();
   const {
-    services: { telemetry, agentBuilder },
+    services: { telemetry },
   } = useKibanaContextForPlugin();
+
+  // Configure agent builder global flyout with the host attachment
+  useHostAttachmentConfig();
 
   useEffect(() => {
     if (!loading) {
@@ -47,40 +44,6 @@ export const Flyout = ({
       });
     }
   }, [schema, entity.type, activeTabId, telemetry, loading]);
-
-  // Configure agent builder global flyout with the host attachment
-  useEffect(() => {
-    if (!agentBuilder || loading || entity.type !== 'host' || !entity.name) {
-      return;
-    }
-
-    const { from, to } = getParsedDateRange();
-    if (!from || !to) {
-      return;
-    }
-
-    agentBuilder.setConversationFlyoutActiveConfig({
-      agentId: OBSERVABILITY_AGENT_ID,
-      attachments: [
-        {
-          type: OBSERVABILITY_HOST_ATTACHMENT_TYPE_ID,
-          data: {
-            hostName: entity.name,
-            start: from,
-            end: to,
-            attachmentLabel: i18n.translate('xpack.infra.assetDetails.hostAttachmentLabel', {
-              defaultMessage: '{hostName} host',
-              values: { hostName: entity.name },
-            }),
-          },
-        },
-      ],
-    });
-
-    return () => {
-      agentBuilder.clearConversationFlyoutActiveConfig();
-    };
-  }, [agentBuilder, entity.name, entity.type, getParsedDateRange, loading]);
 
   const handleOnClose = useCallback(() => {
     setUrlState(null);
