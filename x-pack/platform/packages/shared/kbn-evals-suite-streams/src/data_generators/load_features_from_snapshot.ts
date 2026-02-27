@@ -14,6 +14,7 @@ import { resolveBasePath } from './snapshot_run_config';
 import { getSigeventsSnapshotFeaturesIndex } from './sigevents_features_index';
 
 export const FEATURES_TEMP_INDEX = 'sigevents-replay-temp-features';
+const FEATURES_SEARCH_LIMIT = 1000;
 
 /**
  * Restores sigevents-captured features from a snapshot and returns all
@@ -64,7 +65,7 @@ export async function loadFeaturesFromSnapshot(
 
     const searchResult = await esClient.search<Record<string, unknown>>({
       index: FEATURES_TEMP_INDEX,
-      size: 1000,
+      size: FEATURES_SEARCH_LIMIT,
       query: { term: { stream_name: streamName } },
     });
 
@@ -72,7 +73,9 @@ export async function loadFeaturesFromSnapshot(
       .map((hit) => hit._source as Feature)
       .filter(Boolean);
 
-    log.info(`Loaded ${features.length} features from snapshot "${snapshotName}"`);
+    log.info(
+      `Loaded ${features.length} features from snapshot "${snapshotName}" (search limit: ${FEATURES_SEARCH_LIMIT})`
+    );
     return features;
   } finally {
     try {

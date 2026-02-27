@@ -18,7 +18,7 @@ describe('snapshot_run_config', () => {
     jest.resetModules();
   });
 
-  it('defaults SIGEVENTS_SNAPSHOT_RUN to current date when env is unset', async () => {
+  it('defaults SIGEVENTS_SNAPSHOT_RUN to pinned date when env is unset', async () => {
     delete process.env.SIGEVENTS_SNAPSHOT_RUN;
     jest.resetModules();
 

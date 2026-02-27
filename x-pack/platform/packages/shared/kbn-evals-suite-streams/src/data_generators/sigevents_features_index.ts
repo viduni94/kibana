@@ -10,7 +10,6 @@ const SIGEVENTS_FEATURES_INDEX_PREFIX = 'sigevents-streams-features-';
 export const SIGEVENTS_FEATURES_INDEX_PATTERN = `${SIGEVENTS_FEATURES_INDEX_PREFIX}*`;
 
 function sanitizeIndexComponent(value: string): string {
-  // Elasticsearch index names must be lowercase and must not contain: \ / * ? " < > | space , #
   return value
     .toLowerCase()
     .replace(/[^a-z0-9-_]+/g, '-')
@@ -20,7 +19,7 @@ function sanitizeIndexComponent(value: string): string {
 }
 
 /**
- * Name of the non-system index that stores Streams-extracted features for a
+ * Name of the non-system index that stores extracted features for a
  * given snapshot scenario.
  *
  * We intentionally keep this as a **regular** index (no leading `.`) so it can

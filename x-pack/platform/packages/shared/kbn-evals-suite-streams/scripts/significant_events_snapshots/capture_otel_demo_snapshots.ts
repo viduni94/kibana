@@ -170,7 +170,7 @@ async function processScenario(
   log.info(`SCENARIO: ${scenario.id}${scenario.isFailure ? ' (failure)' : ' (baseline)'}`);
   log.info('='.repeat(70));
 
-  // Step 0 — Ensure the `logs` data stream exists so Streams feature extraction can run.
+  // Step 0 — Ensure the `logs` data stream exists so that feature extraction can run.
   // (Streams' /internal/streams/{name}/features/_task requires a concrete data stream to exist.)
   await ensureLogsDataStream(esClient, log);
 
