@@ -199,6 +199,7 @@ async function processScenario(
     }
 
     // Step 5 — Run feature extraction (the task generates both inferred and computed features)
+    // Extracted features will be stored as part of the snapshot
     log.info('[5/7] Running feature extraction...');
     await enableSignificantEvents(config, log);
     await triggerSigEventsFeatureExtraction(config, log, connectorId);
