@@ -13,10 +13,10 @@ import { getCurrentTraceId, createSpanLatencyEvaluator } from '@kbn/evals';
 import type { Feature } from '@kbn/streams-schema';
 import type { GcsConfig } from '../../../src/data_generators/replay';
 import {
-  canonicalFeaturesFromExpectedGroundTruth,
+  canonicalKIsFromExpectedGroundTruth,
   cleanSignificantEventsDataStreams,
   listAvailableSnapshots,
-  loadFeaturesFromSnapshot,
+  loadKIsFromSnapshot,
   replayIntoManagedStream,
   SIGEVENTS_SNAPSHOT_RUN,
 } from '../../../src/data_generators/replay';
@@ -29,9 +29,9 @@ import {
   MANAGED_STREAM_SEARCH_PATTERN,
   resolveScenarioSnapshotSource,
 } from '../datasets';
-import { FEATURE_SOURCES_TO_RUN } from './resolve_feature_sources';
+import { KI_SOURCES_TO_RUN } from './resolve_ki_sources';
 import { extractLogTextFromSourceDoc } from './extract_log_text';
-import { getComputedFeaturesFromDocs } from './get_computed_features_from_docs';
+import { getComputedKIsFromDocs } from './get_computed_kis_from_docs';
 
 const SAMPLE_DOCS_SIZE = 500;
 
@@ -65,215 +65,211 @@ evaluate.describe(
     });
 
     for (const { dataset, scenario } of queryGenerationRuns) {
-      for (const featureSource of FEATURE_SOURCES_TO_RUN) {
-        evaluate.describe(
-          `${dataset.id} / ${scenario.input.scenario_id} (${featureSource})`,
-          () => {
-            let sampleLogs: string[] = [];
-            let features: Feature[] = [];
+      for (const kiSource of KI_SOURCES_TO_RUN) {
+        evaluate.describe(`${dataset.id} / ${scenario.input.scenario_id} (${kiSource})`, () => {
+          let sampleLogs: string[] = [];
+          let kis: Feature[] = [];
 
-            evaluate.beforeAll(async ({ esClient, apiServices, log }) => {
-              const source = resolveScenarioSnapshotSource({
-                scenarioId: scenario.input.scenario_id,
-                datasetGcs: dataset.gcs,
-                snapshotSource: scenario.snapshot_source,
-              });
-
-              const availableSnapshots =
-                availableSnapshotsBySource.get(snapshotCatalogKey(source.gcs)) ?? new Set();
-
-              if (!availableSnapshots.has(source.snapshotName)) {
-                log.info(
-                  `Snapshot "${source.snapshotName}" not found in run "${SIGEVENTS_SNAPSHOT_RUN}" ` +
-                    `(source: ${source.gcs.bucket}/${source.gcs.basePathPrefix}) - skipping`
-                );
-                evaluate.skip();
-                return;
-              }
-
-              await cleanSignificantEventsDataStreams(esClient, log);
-
-              for (const name of ['logs.otel', 'logs.ecs']) {
-                await esClient.indices.deleteDataStream({ name }).catch(() => {});
-                await esClient.indices
-                  .delete({ index: name, ignore_unavailable: true })
-                  .catch(() => {});
-              }
-
-              await apiServices.streams.disable().catch(() => {});
-              await apiServices.streams.enable();
-
-              const extractionScenario = dataset.featureExtraction.find(
-                (item) => item.input.scenario_id === scenario.input.scenario_id
-              );
-              const canonicalFeatures =
-                extractionScenario?.output.expected_ground_truth != null
-                  ? canonicalFeaturesFromExpectedGroundTruth({
-                      streamName: scenario.input.stream_name,
-                      scenarioId: scenario.input.scenario_id,
-                      expectedGroundTruth: extractionScenario.output.expected_ground_truth,
-                    })
-                  : [];
-
-              const shouldUseCanonicalFeatures =
-                featureSource === 'canonical' ||
-                (featureSource === 'auto' && canonicalFeatures.length > 0);
-
-              const resolvedFeatures = shouldUseCanonicalFeatures
-                ? canonicalFeatures
-                : await loadFeaturesFromSnapshot(
-                    esClient,
-                    log,
-                    source.snapshotName,
-                    source.gcs,
-                    scenario.input.stream_name
-                  );
-
-              if (!shouldUseCanonicalFeatures && resolvedFeatures.length === 0) {
-                log.info(
-                  `No snapshot features available for "${source.snapshotName}" - skipping snapshot variant`
-                );
-                evaluate.skip();
-                return;
-              }
-
-              const stats = await replayIntoManagedStream(
-                esClient,
-                log,
-                source.snapshotName,
-                source.gcs
-              );
-
-              if (stats.created === 0) {
-                throw new Error(
-                  `No documents indexed after replaying snapshot "${source.snapshotName}" into managed stream`
-                );
-              }
-
-              await esClient.indices.refresh({ index: MANAGED_STREAM_SEARCH_PATTERN });
-
-              const searchResult = await esClient.search<Record<string, unknown>>({
-                index: MANAGED_STREAM_SEARCH_PATTERN,
-                size: SAMPLE_DOCS_SIZE,
-                query: { match_all: {} },
-                sort: [{ '@timestamp': { order: 'desc' } }],
-              });
-
-              sampleLogs = searchResult.hits.hits.map((hit) =>
-                extractLogTextFromSourceDoc(hit._source)
-              );
-
-              if (shouldUseCanonicalFeatures) {
-                const sourceDocs = searchResult.hits.hits
-                  .map((hit) => hit._source)
-                  .filter((doc): doc is Record<string, unknown> => doc != null);
-
-                const computedFeatures = getComputedFeaturesFromDocs({
-                  streamName: scenario.input.stream_name,
-                  docs: sourceDocs,
-                });
-
-                features = [...resolvedFeatures, ...computedFeatures];
-              } else {
-                features = resolvedFeatures;
-              }
-
-              if (features.length === 0) {
-                const details = shouldUseCanonicalFeatures
-                  ? 'No canonical features could be derived from expected_ground_truth.'
-                  : `No snapshot features found for "${source.snapshotName}". Ensure the snapshot includes sigevents-streams-features-<scenario>.`;
-                throw new Error(
-                  `No features available for scenario "${scenario.input.scenario_id}". ${details}`
-                );
-              }
+          evaluate.beforeAll(async ({ esClient, apiServices, log }) => {
+            const source = resolveScenarioSnapshotSource({
+              scenarioId: scenario.input.scenario_id,
+              datasetGcs: dataset.gcs,
+              snapshotSource: scenario.snapshot_source,
             });
 
-            evaluate(
-              'query generation',
-              async ({
-                executorClient,
-                evaluators,
-                esClient,
-                inferenceClient,
-                logger,
-                apiServices,
-                traceEsClient,
-                log,
-              }) => {
-                await executorClient.runExperiment(
-                  {
-                    dataset: {
-                      name: `sigevents: query generation: ${scenario.input.scenario_id} (${dataset.id}) (${featureSource})`,
-                      description: `[${dataset.id}] ${scenario.input.stream_description}`,
-                      examples: [
-                        {
-                          input: {
-                            ...scenario.input,
-                            features,
-                            sample_logs: sampleLogs,
-                          },
-                          output: {
-                            ...scenario.output,
-                            expected: scenario.output.expected_ground_truth,
-                          },
-                          metadata: {
-                            ...scenario.metadata,
-                            test_index: MANAGED_STREAM_SEARCH_PATTERN,
-                          },
-                        },
-                      ],
-                    },
-                    task: async () => {
-                      const { stream: logsStream } = await apiServices.streams.getStreamDefinition(
-                        MANAGED_STREAM_NAME
-                      );
+            const availableSnapshots =
+              availableSnapshotsBySource.get(snapshotCatalogKey(source.gcs)) ?? new Set();
 
-                      const stream = { ...logsStream, name: MANAGED_STREAM_SEARCH_PATTERN };
+            if (!availableSnapshots.has(source.snapshotName)) {
+              log.info(
+                `Snapshot "${source.snapshotName}" not found in run "${SIGEVENTS_SNAPSHOT_RUN}" ` +
+                  `(source: ${source.gcs.bucket}/${source.gcs.basePathPrefix}) - skipping`
+              );
+              evaluate.skip();
+              return;
+            }
 
-                      const { queries, toolUsage } = await generateSignificantEvents({
-                        stream,
-                        esClient,
-                        start: kbnDatemath.parse('now-24h')!.valueOf(),
-                        end: kbnDatemath.parse('now')!.valueOf(),
-                        inferenceClient,
-                        logger,
-                        signal: new AbortController().signal,
-                        systemPrompt: significantEventsPrompt,
-                        getFeatures: async () => features,
-                      });
+            await cleanSignificantEventsDataStreams(esClient, log);
 
-                      logger.info(
-                        `[DEBUG] Tool usage: add_queries calls=${toolUsage.add_queries.calls}, failures=${toolUsage.add_queries.failures}`
-                      );
+            for (const name of ['logs.otel', 'logs.ecs']) {
+              await esClient.indices.deleteDataStream({ name }).catch(() => {});
+              await esClient.indices
+                .delete({ index: name, ignore_unavailable: true })
+                .catch(() => {});
+            }
 
-                      return { queries, traceId: getCurrentTraceId() };
-                    },
-                  },
-                  [
-                    ...createQueryGenerationEvaluators(
-                      esClient,
-                      {
-                        criteriaFn: evaluators.criteria.bind(evaluators),
-                        criteria: scenario.output.criteria,
-                      },
-                      logger
-                    ),
-                    evaluators.traceBasedEvaluators.inputTokens,
-                    evaluators.traceBasedEvaluators.outputTokens,
-                    evaluators.traceBasedEvaluators.cachedTokens,
-                    createSpanLatencyEvaluator({ traceEsClient, log, spanName: 'ChatComplete' }),
-                  ]
+            await apiServices.streams.disable().catch(() => {});
+            await apiServices.streams.enable();
+
+            const extractionScenario = dataset.kiExtraction.find(
+              (item) => item.input.scenario_id === scenario.input.scenario_id
+            );
+            const canonicalKIs =
+              extractionScenario?.output.expected_ground_truth != null
+                ? canonicalKIsFromExpectedGroundTruth({
+                    streamName: scenario.input.stream_name,
+                    scenarioId: scenario.input.scenario_id,
+                    expectedGroundTruth: extractionScenario.output.expected_ground_truth,
+                  })
+                : [];
+
+            const shouldUseCanonicalKIs =
+              kiSource === 'canonical' || (kiSource === 'auto' && canonicalKIs.length > 0);
+
+            const resolvedKIs = shouldUseCanonicalKIs
+              ? canonicalKIs
+              : await loadKIsFromSnapshot(
+                  esClient,
+                  log,
+                  source.snapshotName,
+                  source.gcs,
+                  scenario.input.stream_name
                 );
-              }
+
+            if (!shouldUseCanonicalKIs && resolvedKIs.length === 0) {
+              log.info(
+                `No snapshot KIs available for "${source.snapshotName}" - skipping snapshot variant`
+              );
+              evaluate.skip();
+              return;
+            }
+
+            const stats = await replayIntoManagedStream(
+              esClient,
+              log,
+              source.snapshotName,
+              source.gcs
             );
 
-            evaluate.afterAll(async ({ esClient, apiServices, log }) => {
-              log.debug('Cleaning up query-generation test data');
-              await apiServices.streams.disable().catch(() => {});
-              await cleanSignificantEventsDataStreams(esClient, log);
+            if (stats.created === 0) {
+              throw new Error(
+                `No documents indexed after replaying snapshot "${source.snapshotName}" into managed stream`
+              );
+            }
+
+            await esClient.indices.refresh({ index: MANAGED_STREAM_SEARCH_PATTERN });
+
+            const searchResult = await esClient.search<Record<string, unknown>>({
+              index: MANAGED_STREAM_SEARCH_PATTERN,
+              size: SAMPLE_DOCS_SIZE,
+              query: { match_all: {} },
+              sort: [{ '@timestamp': { order: 'desc' } }],
             });
-          }
-        );
+
+            sampleLogs = searchResult.hits.hits.map((hit) =>
+              extractLogTextFromSourceDoc(hit._source)
+            );
+
+            if (shouldUseCanonicalKIs) {
+              const sourceDocs = searchResult.hits.hits
+                .map((hit) => hit._source)
+                .filter((doc): doc is Record<string, unknown> => doc != null);
+
+              const computedKIs = getComputedKIsFromDocs({
+                streamName: scenario.input.stream_name,
+                docs: sourceDocs,
+              });
+
+              kis = [...resolvedKIs, ...computedKIs];
+            } else {
+              kis = resolvedKIs;
+            }
+
+            if (kis.length === 0) {
+              const details = shouldUseCanonicalKIs
+                ? 'No canonical KIs could be derived from expected_ground_truth.'
+                : `No snapshot KIs found for "${source.snapshotName}". Ensure the snapshot includes sigevents-streams-features-<scenario>.`;
+              throw new Error(
+                `No KIs available for scenario "${scenario.input.scenario_id}". ${details}`
+              );
+            }
+          });
+
+          evaluate(
+            'query generation',
+            async ({
+              executorClient,
+              evaluators,
+              esClient,
+              inferenceClient,
+              logger,
+              apiServices,
+              traceEsClient,
+              log,
+            }) => {
+              await executorClient.runExperiment(
+                {
+                  dataset: {
+                    name: `sigevents: query generation: ${scenario.input.scenario_id} (${dataset.id}) (${kiSource})`,
+                    description: `[${dataset.id}] ${scenario.input.stream_description}`,
+                    examples: [
+                      {
+                        input: {
+                          ...scenario.input,
+                          features: kis,
+                          sample_logs: sampleLogs,
+                        },
+                        output: {
+                          ...scenario.output,
+                          expected: scenario.output.expected_ground_truth,
+                        },
+                        metadata: {
+                          ...scenario.metadata,
+                          test_index: MANAGED_STREAM_SEARCH_PATTERN,
+                        },
+                      },
+                    ],
+                  },
+                  task: async () => {
+                    const { stream: logsStream } = await apiServices.streams.getStreamDefinition(
+                      MANAGED_STREAM_NAME
+                    );
+
+                    const stream = { ...logsStream, name: MANAGED_STREAM_SEARCH_PATTERN };
+
+                    const { queries, toolUsage } = await generateSignificantEvents({
+                      stream,
+                      esClient,
+                      start: kbnDatemath.parse('now-24h')!.valueOf(),
+                      end: kbnDatemath.parse('now')!.valueOf(),
+                      inferenceClient,
+                      logger,
+                      signal: new AbortController().signal,
+                      systemPrompt: significantEventsPrompt,
+                      getFeatures: async () => kis,
+                    });
+
+                    logger.info(
+                      `[DEBUG] Tool usage: add_queries calls=${toolUsage.add_queries.calls}, failures=${toolUsage.add_queries.failures}`
+                    );
+
+                    return { queries, traceId: getCurrentTraceId() };
+                  },
+                },
+                [
+                  ...createQueryGenerationEvaluators(
+                    esClient,
+                    {
+                      criteriaFn: evaluators.criteria.bind(evaluators),
+                      criteria: scenario.output.criteria,
+                    },
+                    logger
+                  ),
+                  evaluators.traceBasedEvaluators.inputTokens,
+                  evaluators.traceBasedEvaluators.outputTokens,
+                  evaluators.traceBasedEvaluators.cachedTokens,
+                  createSpanLatencyEvaluator({ traceEsClient, log, spanName: 'ChatComplete' }),
+                ]
+              );
+            }
+          );
+
+          evaluate.afterAll(async ({ esClient, apiServices, log }) => {
+            log.debug('Cleaning up query-generation test data');
+            await apiServices.streams.disable().catch(() => {});
+            await cleanSignificantEventsDataStreams(esClient, log);
+          });
+        });
       }
     }
 

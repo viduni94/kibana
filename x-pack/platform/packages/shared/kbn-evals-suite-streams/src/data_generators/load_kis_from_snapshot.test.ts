@@ -19,7 +19,7 @@ jest.mock('@kbn/es-snapshot-loader', () => ({
   restoreSnapshot: mockRestoreSnapshot,
 }));
 
-describe('load_features_from_snapshot', () => {
+describe('load_kis_from_snapshot', () => {
   const log = {
     info: jest.fn(),
     debug: jest.fn(),
@@ -54,20 +54,14 @@ describe('load_features_from_snapshot', () => {
     });
 
     const esClient = makeEsClient();
-    const { loadFeaturesFromSnapshot } = await import('./load_features_from_snapshot');
-    const features = await loadFeaturesFromSnapshot(
-      esClient,
-      log,
-      'payment-unreachable',
-      gcs,
-      'logs'
-    );
+    const { loadKIsFromSnapshot } = await import('./load_kis_from_snapshot');
+    const kis = await loadKIsFromSnapshot(esClient, log, 'payment-unreachable', gcs, 'logs');
 
-    expect(features).toEqual([]);
+    expect(kis).toEqual([]);
     expect(esClient.search).not.toHaveBeenCalled();
   });
 
-  it('restores into temp index and returns matching Feature docs', async () => {
+  it('restores into temp index and returns matching KI docs', async () => {
     mockRestoreSnapshot.mockResolvedValue({
       success: true,
       snapshotName: 'payment-unreachable',
@@ -85,18 +79,10 @@ describe('load_features_from_snapshot', () => {
       },
     });
 
-    const { loadFeaturesFromSnapshot, FEATURES_TEMP_INDEX } = await import(
-      './load_features_from_snapshot'
-    );
-    const features = await loadFeaturesFromSnapshot(
-      esClient,
-      log,
-      'payment-unreachable',
-      gcs,
-      'logs'
-    );
+    const { loadKIsFromSnapshot, KIS_TEMP_INDEX } = await import('./load_kis_from_snapshot');
+    const kis = await loadKIsFromSnapshot(esClient, log, 'payment-unreachable', gcs, 'logs');
 
-    expect(features).toHaveLength(2);
+    expect(kis).toHaveLength(2);
 
     expect(mockCreateGcsRepository).toHaveBeenCalledWith({
       bucket: GCS_BUCKET,
@@ -107,7 +93,7 @@ describe('load_features_from_snapshot', () => {
       expect.objectContaining({
         snapshotName: 'payment-unreachable',
         renamePattern: '(.+)',
-        renameReplacement: FEATURES_TEMP_INDEX,
+        renameReplacement: KIS_TEMP_INDEX,
         allowNoMatches: true,
       })
     );
@@ -122,21 +108,19 @@ describe('load_features_from_snapshot', () => {
     });
 
     const esClient = makeEsClient();
-    const { loadFeaturesFromSnapshot } = await import('./load_features_from_snapshot');
+    const { loadKIsFromSnapshot } = await import('./load_kis_from_snapshot');
 
     await expect(
-      loadFeaturesFromSnapshot(esClient, log, 'healthy-baseline', gcs, 'logs')
+      loadKIsFromSnapshot(esClient, log, 'healthy-baseline', gcs, 'logs')
     ).rejects.toThrow(/did not produce expected temp index/i);
   });
 
   it('cleans up the temp index at the end even if search throws', async () => {
-    const { loadFeaturesFromSnapshot, FEATURES_TEMP_INDEX } = await import(
-      './load_features_from_snapshot'
-    );
+    const { loadKIsFromSnapshot, KIS_TEMP_INDEX } = await import('./load_kis_from_snapshot');
     mockRestoreSnapshot.mockResolvedValue({
       success: true,
       snapshotName: 'payment-unreachable',
-      restoredIndices: [FEATURES_TEMP_INDEX],
+      restoredIndices: [KIS_TEMP_INDEX],
       errors: [],
     });
 
@@ -144,12 +128,12 @@ describe('load_features_from_snapshot', () => {
     (esClient.search as any).mockRejectedValue(new Error('boom'));
 
     await expect(
-      loadFeaturesFromSnapshot(esClient, log, 'payment-unreachable', gcs, 'logs')
+      loadKIsFromSnapshot(esClient, log, 'payment-unreachable', gcs, 'logs')
     ).rejects.toThrow('boom');
 
     expect((esClient.indices.delete as any).mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(esClient.indices.delete).toHaveBeenCalledWith({
-      index: FEATURES_TEMP_INDEX,
+      index: KIS_TEMP_INDEX,
       ignore_unavailable: true,
     });
   });
