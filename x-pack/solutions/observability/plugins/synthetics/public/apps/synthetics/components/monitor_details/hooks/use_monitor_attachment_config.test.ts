@@ -7,13 +7,17 @@
 
 import { renderHook } from '@testing-library/react';
 import { useMonitorAttachmentConfig } from './use_monitor_attachment_config';
+import {
+  OBSERVABILITY_AGENT_ID,
+  OBSERVABILITY_MONITOR_ATTACHMENT_TYPE_ID,
+} from '@kbn/observability-agent-builder-plugin/public';
 
-const mockSetConversationFlyoutActiveConfig = jest.fn();
-const mockClearConversationFlyoutActiveConfig = jest.fn();
+const mockSetChatConfig = jest.fn();
+const mockClearChatConfig = jest.fn();
 
 const mockAgentBuilder = {
-  setConversationFlyoutActiveConfig: mockSetConversationFlyoutActiveConfig,
-  clearConversationFlyoutActiveConfig: mockClearConversationFlyoutActiveConfig,
+  setChatConfig: mockSetChatConfig,
+  clearChatConfig: mockClearChatConfig,
 };
 
 jest.mock('@kbn/kibana-react-plugin/public', () => ({
@@ -66,7 +70,7 @@ describe('useMonitorAttachmentConfig', () => {
 
     renderHook(() => useMonitorAttachmentConfig());
 
-    expect(mockSetConversationFlyoutActiveConfig).not.toHaveBeenCalled();
+    expect(mockSetChatConfig).not.toHaveBeenCalled();
   });
 
   it('does not configure attachment when loading is true', () => {
@@ -74,7 +78,7 @@ describe('useMonitorAttachmentConfig', () => {
 
     renderHook(() => useMonitorAttachmentConfig());
 
-    expect(mockSetConversationFlyoutActiveConfig).not.toHaveBeenCalled();
+    expect(mockSetChatConfig).not.toHaveBeenCalled();
   });
 
   it('does not configure attachment when monitor is null', () => {
@@ -82,7 +86,7 @@ describe('useMonitorAttachmentConfig', () => {
 
     renderHook(() => useMonitorAttachmentConfig());
 
-    expect(mockSetConversationFlyoutActiveConfig).not.toHaveBeenCalled();
+    expect(mockSetChatConfig).not.toHaveBeenCalled();
   });
 
   it('does not configure attachment when configId is missing', () => {
@@ -90,7 +94,7 @@ describe('useMonitorAttachmentConfig', () => {
 
     renderHook(() => useMonitorAttachmentConfig());
 
-    expect(mockSetConversationFlyoutActiveConfig).not.toHaveBeenCalled();
+    expect(mockSetChatConfig).not.toHaveBeenCalled();
   });
 
   it('configures agent builder with monitor attachment when all conditions are met', () => {
@@ -98,11 +102,11 @@ describe('useMonitorAttachmentConfig', () => {
 
     renderHook(() => useMonitorAttachmentConfig());
 
-    expect(mockSetConversationFlyoutActiveConfig).toHaveBeenCalledWith({
-      agentId: 'observability.agent',
+    expect(mockSetChatConfig).toHaveBeenCalledWith({
+      agentId: OBSERVABILITY_AGENT_ID,
       attachments: [
         {
-          type: 'observability.monitor',
+          type: OBSERVABILITY_MONITOR_ATTACHMENT_TYPE_ID,
           data: {
             attachmentLabel: 'My HTTP Monitor monitor',
             configId: 'test-config-id',
@@ -119,11 +123,11 @@ describe('useMonitorAttachmentConfig', () => {
 
     const { unmount } = renderHook(() => useMonitorAttachmentConfig());
 
-    expect(mockSetConversationFlyoutActiveConfig).toHaveBeenCalledTimes(1);
+    expect(mockSetChatConfig).toHaveBeenCalledTimes(1);
 
     unmount();
 
-    expect(mockClearConversationFlyoutActiveConfig).toHaveBeenCalledTimes(1);
+    expect(mockClearChatConfig).toHaveBeenCalledTimes(1);
   });
 
   it('uses "unknown" when monitor type is undefined', () => {
@@ -133,7 +137,7 @@ describe('useMonitorAttachmentConfig', () => {
 
     renderHook(() => useMonitorAttachmentConfig());
 
-    expect(mockSetConversationFlyoutActiveConfig).toHaveBeenCalledWith(
+    expect(mockSetChatConfig).toHaveBeenCalledWith(
       expect.objectContaining({
         attachments: [
           expect.objectContaining({

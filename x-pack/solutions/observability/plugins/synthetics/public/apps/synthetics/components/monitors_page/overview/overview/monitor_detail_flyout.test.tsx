@@ -10,6 +10,10 @@ import { render } from '../../../../utils/testing/rtl_helpers';
 import { fireEvent } from '@testing-library/react';
 import { MonitorDetailFlyout } from './monitor_detail_flyout';
 import * as observabilitySharedPublic from '@kbn/observability-shared-plugin/public';
+import * as observabilitySharedPublic from '@kbn/observability-shared-plugin/public';
+import * as observabilitySharedPublic from '@kbn/observability-shared-plugin/public';
+import * as observabilitySharedPublic from '@kbn/observability-shared-plugin/public';
+import * as observabilitySharedPublic from '@kbn/observability-shared-plugin/public';
 import * as monitorDetail from '../../../../hooks/use_monitor_detail';
 import * as statusByLocation from '../../../../hooks/use_status_by_location';
 import * as monitorDetailLocator from '../../../../hooks/use_monitor_detail_locator';
@@ -187,11 +191,11 @@ describe('Monitor Detail Flyout', () => {
   });
 
   describe('agent builder attachment', () => {
-    const mockSetConversationFlyoutActiveConfig = jest.fn();
-    const mockClearConversationFlyoutActiveConfig = jest.fn();
+    const mockSetChatConfig = jest.fn();
+    const mockClearChatConfig = jest.fn();
     const mockAgentBuilder = {
-      setConversationFlyoutActiveConfig: mockSetConversationFlyoutActiveConfig,
-      clearConversationFlyoutActiveConfig: mockClearConversationFlyoutActiveConfig,
+      setChatConfig: mockSetChatConfig,
+      clearChatConfig: mockClearChatConfig,
     };
 
     const monitorState = {
@@ -224,7 +228,7 @@ describe('Monitor Detail Flyout', () => {
         }
       );
 
-      expect(mockSetConversationFlyoutActiveConfig).toHaveBeenCalledWith({
+      expect(mockSetChatConfig).toHaveBeenCalledWith({
         agentId: OBSERVABILITY_AGENT_ID,
         attachments: [
           {
@@ -256,7 +260,7 @@ describe('Monitor Detail Flyout', () => {
         }
       );
 
-      expect(mockSetConversationFlyoutActiveConfig).not.toHaveBeenCalled();
+      expect(mockSetChatConfig).not.toHaveBeenCalled();
     });
 
     it('clears attachment config on unmount', () => {
@@ -276,11 +280,11 @@ describe('Monitor Detail Flyout', () => {
         }
       );
 
-      expect(mockSetConversationFlyoutActiveConfig).toHaveBeenCalledTimes(1);
+      expect(mockSetChatConfig).toHaveBeenCalledTimes(1);
 
       unmount();
 
-      expect(mockClearConversationFlyoutActiveConfig).toHaveBeenCalledTimes(1);
+      expect(mockClearChatConfig).toHaveBeenCalledTimes(1);
     });
   });
 });
