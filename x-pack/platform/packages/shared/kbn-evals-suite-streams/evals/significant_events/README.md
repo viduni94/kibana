@@ -134,7 +134,7 @@ node scripts/evals run \
 | --- | --- | --- |
 | `SIGEVENTS_SNAPSHOT_RUN` | Run ID subfolder in GCS to replay snapshots from | `2026-02-25` |
 | `SIGEVENTS_DATASET` | Dataset(s) to run (comma-separated or `all`) | `all` |
-| `SIGEVENTS_RULEGEN_KI_SOURCE` | KI source for rule generation (`canonical`, `snapshot`, `both`) | `both` |
+| `RULE_GENERATION_KI_SOURCE` | KI source for rule generation (`canonical`, `snapshot`, `both`) | `both` |
 | `GCS_CREDENTIALS` | GCS service account JSON for snapshot access | — |
 | `TRACING_ES_URL` | Elasticsearch URL for trace queries (if traces are in a separate cluster) | Falls back to test cluster |
 | `TRACING_ES_API_KEY` | API key for the trace Elasticsearch cluster | — |

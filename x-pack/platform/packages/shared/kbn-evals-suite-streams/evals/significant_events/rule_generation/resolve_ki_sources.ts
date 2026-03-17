@@ -39,7 +39,5 @@ const resolveKISourcesToRun = (source: KISourceInput | string | undefined): KISo
  * When unset, defaults to `['canonical', 'snapshot']` (i.e. `both`).
  */
 export const KI_SOURCES_TO_RUN = resolveKISourcesToRun(
-  process.env.RULE_GENERATION_KI_SOURCE ??
-    process.env.SIGEVENTS_QUERYGEN_KI_SOURCE ??
-    process.env.SIGEVENTS_QUERYGEN_FEATURES_SOURCE
+  process.env.RULE_GENERATION_KI_SOURCE || process.env.SIGEVENTS_QUERYGEN_FEATURES_SOURCE
 );
