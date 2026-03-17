@@ -9,7 +9,7 @@ type KISource = 'canonical' | 'snapshot' | 'auto';
 type KISourceInput = KISource | 'both';
 
 /**
- * Resolves which KI source variants to run for query generation evaluation.
+ * Resolves which KI source variants to run for rule generation evaluation.
  *
  * - `canonical`: Uses hand-crafted KIs derived from the scenario's
  *   `expected_ground_truth`. Provides a deterministic baseline that is
@@ -35,9 +35,11 @@ const resolveKISourcesToRun = (source: KISourceInput | string | undefined): KISo
 };
 
 /**
- * KI source variants to run, controlled by `SIGEVENTS_QUERYGEN_KI_SOURCE`.
+ * KI source variants to run, controlled by `RULE_GENERATION_KI_SOURCE`.
  * When unset, defaults to `['canonical', 'snapshot']` (i.e. `both`).
  */
 export const KI_SOURCES_TO_RUN = resolveKISourcesToRun(
-  process.env.SIGEVENTS_QUERYGEN_KI_SOURCE ?? process.env.SIGEVENTS_QUERYGEN_FEATURES_SOURCE
+  process.env.RULE_GENERATION_KI_SOURCE ??
+    process.env.SIGEVENTS_QUERYGEN_KI_SOURCE ??
+    process.env.SIGEVENTS_QUERYGEN_FEATURES_SOURCE
 );

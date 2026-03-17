@@ -11,7 +11,7 @@ import { createGcsRepository, restoreSnapshot } from '@kbn/es-snapshot-loader';
 import type { Feature } from '@kbn/streams-schema';
 import type { GcsConfig } from './snapshot_run_config';
 import { resolveBasePath } from './snapshot_run_config';
-import { getSigeventsSnapshotFeaturesIndex } from './sigevents_features_index';
+import { getSigeventsSnapshotKIsIndex } from './sigevents_kis_index';
 
 export const KIS_TEMP_INDEX = 'sigevents-replay-temp-features';
 const KIS_SEARCH_LIMIT = 1000;
@@ -30,7 +30,7 @@ export async function loadKIsFromSnapshot(
 ): Promise<Feature[]> {
   const basePath = resolveBasePath(gcs);
   const repository = createGcsRepository({ bucket: gcs.bucket, basePath });
-  const featuresIndex = getSigeventsSnapshotFeaturesIndex(snapshotName);
+  const kiIndex = getSigeventsSnapshotKIsIndex(snapshotName);
 
   try {
     await esClient.indices.delete({ index: KIS_TEMP_INDEX, ignore_unavailable: true });
@@ -40,7 +40,7 @@ export async function loadKIsFromSnapshot(
       log,
       repository,
       snapshotName,
-      indices: [featuresIndex],
+      indices: [kiIndex],
       renamePattern: '(.+)',
       renameReplacement: KIS_TEMP_INDEX,
       allowNoMatches: true,

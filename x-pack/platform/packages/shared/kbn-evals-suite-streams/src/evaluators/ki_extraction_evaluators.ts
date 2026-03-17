@@ -103,7 +103,7 @@ const typeValidationEvaluator = {
  */
 function parseKeyValuePairs(evidence: string): Array<{ key: string; value: string }> {
   const regex =
-    /([a-zA-Z_][a-zA-Z0-9_.]*)\s*=\s*([^\s]+(?:\s+(?![a-zA-Z_][a-zA-Z0-9_.]*\s*=)[^\s]+)*)/g;
+    /([a-zA-Z_][a-zA-Z0-9_]*(?:\.(?:[a-zA-Z_][a-zA-Z0-9_]*|\d+))*)\s*=\s*([^\s]+(?:\s+(?![a-zA-Z_][a-zA-Z0-9_]*(?:\.(?:[a-zA-Z_][a-zA-Z0-9_]*|\d+))*\s*=)[^\s]+)*)/g;
   const pairs: Array<{ key: string; value: string }> = [];
   let match: RegExpExecArray | null;
 
@@ -147,6 +147,27 @@ function getAllStringValues(doc: Record<string, unknown>): string[] {
   return values;
 }
 
+const SHORT_EVIDENCE_MAX_LENGTH = 3;
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function matchesDirectEvidence(value: string, evidence: string): boolean {
+  const normalizedEvidence = evidence.trim();
+  if (normalizedEvidence.length === 0) {
+    return false;
+  }
+
+  if (normalizedEvidence.length <= SHORT_EVIDENCE_MAX_LENGTH) {
+    return new RegExp(`(^|[^a-zA-Z0-9_])${escapeRegExp(normalizedEvidence)}($|[^a-zA-Z0-9_])`).test(
+      value
+    );
+  }
+
+  return value.includes(normalizedEvidence);
+}
+
 /**
  * Checks whether a single evidence string is grounded in the input documents.
  *
@@ -158,7 +179,7 @@ function getAllStringValues(doc: Record<string, unknown>): string[] {
 function isEvidenceGrounded(evidence: string, documents: Array<Record<string, unknown>>): boolean {
   const matchesStringValue = documents.some((doc) => {
     const allValues = getAllStringValues(doc);
-    return allValues.some((val) => val.includes(evidence) || evidence.includes(val));
+    return allValues.some((val) => matchesDirectEvidence(val, evidence));
   });
   if (matchesStringValue) {
     return true;
@@ -305,7 +326,7 @@ const evidenceGroundingEvaluator = {
 
 /**
  * If min_features or max_features is specified in expected output,
- * verifies the KI count falls within bounds.
+ * verifies the KI count falls within bounds with proportional penalties.
  */
 const kiCountEvaluator = {
   name: 'ki_count',
@@ -315,18 +336,22 @@ const kiCountEvaluator = {
     const { min_features = -Infinity, max_features = Infinity } = expected;
 
     const issues: string[] = [];
+    let score = 1;
+
     if (count < min_features) {
       issues.push(`Expected at least ${min_features} KIs, got ${count}`);
+      score = min_features > 0 ? Math.max(0, count / min_features) : 0;
     }
     if (count > max_features) {
       issues.push(`Expected at most ${max_features} KIs, got ${count}`);
+      score = max_features > 0 ? Math.max(0, 1 - (count - max_features) / max_features) : 0;
     }
 
     return {
-      score: issues.length === 0 ? 1 : 0,
+      score,
       explanation:
         issues.length > 0
-          ? issues.join('; ')
+          ? `${issues.join('; ')} (score=${score.toFixed(2)})`
           : `KI count ${count} is within bounds [${min_features ?? '∞'}, ${max_features ?? '∞'}]`,
       details: { count, min_features, max_features },
     };
@@ -446,7 +471,6 @@ export const createKIExtractionEvaluators = (scenarioCriteria?: {
       criteriaFn: (c) =>
         criteriaFn(c) as Evaluator<KIExtractionEvaluationExample, KIExtractionOutput>,
       criteria,
-      transformOutput: (output) => getKIsFromOutput(output),
     }),
   ];
 };

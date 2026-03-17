@@ -90,7 +90,7 @@ export const snapshotSourceKey = ({
 
 export type {
   DatasetConfig,
-  QueryGenerationScenario,
+  RuleGenerationScenario,
   KIExtractionScenario,
   SnapshotSourceOverride,
 } from './types';

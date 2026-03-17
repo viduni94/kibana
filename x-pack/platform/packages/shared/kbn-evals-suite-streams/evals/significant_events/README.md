@@ -1,6 +1,6 @@
 # Significant Events Evaluations
 
-Evaluations for Streams Significant Events, which assess the quality of LLM-based Knowledge Indicator (KI) extraction, ES|QL query generation, and KI deduplication across failure scenarios.
+Evaluations for Streams Significant Events, which assess the quality of LLM-based Knowledge Indicator (KI) extraction, rule generation, and KI deduplication across failure scenarios.
 These evaluations support both qualitative (LLM-as-a-judge + deterministic CODE evaluators) and quantitative (trace-based) metrics.
 
 For general information about writing evaluation tests, configuration, and usage, see the main [`@kbn/evals` documentation](../../../../../platform/packages/shared/kbn-evals/README.md).
@@ -10,7 +10,7 @@ For general information about writing evaluation tests, configuration, and usage
 | Suite | Spec | What it measures |
 | --- | --- | --- |
 | **KI extraction** | `ki_extraction/ki_extraction.spec.ts` | Can the LLM identify entities, dependencies, and infrastructure from raw log samples? |
-| **Query generation** | `query_generation/query_generation.spec.ts` | Can the LLM produce valid, hit-producing ES\|QL queries for significant event detection? |
+| **Rule generation** | `rule_generation/rule_generation.spec.ts` | Can the LLM produce valid, hit-producing ES\|QL rules for significant event detection? |
 | **KI duplication** | `ki_duplication/ki_duplication.spec.ts` | Are KIs stable and semantically unique across repeated extraction runs? |
 
 ## Prerequisites
@@ -134,7 +134,7 @@ node scripts/evals run \
 | --- | --- | --- |
 | `SIGEVENTS_SNAPSHOT_RUN` | Run ID subfolder in GCS to replay snapshots from | `2026-02-25` |
 | `SIGEVENTS_DATASET` | Dataset(s) to run (comma-separated or `all`) | `all` |
-| `SIGEVENTS_QUERYGEN_KI_SOURCE` | KI source for query generation (`canonical`, `snapshot`, `both`) | `both` |
+| `SIGEVENTS_RULEGEN_KI_SOURCE` | KI source for rule generation (`canonical`, `snapshot`, `both`) | `both` |
 | `GCS_CREDENTIALS` | GCS service account JSON for snapshot access | — |
 | `TRACING_ES_URL` | Elasticsearch URL for trace queries (if traces are in a separate cluster) | Falls back to test cluster |
 | `TRACING_ES_API_KEY` | API key for the trace Elasticsearch cluster | — |
@@ -150,14 +150,14 @@ node scripts/evals run \
 | **ki_count** | KI extraction | KI count falls within expected bounds |
 | **confidence_bounds** | KI extraction | No KI exceeds the maximum confidence threshold |
 | **type_assertions** | KI extraction | Required types are present; forbidden types are absent |
-| **query_generation_code_evaluator** | Query generation | ES\|QL syntax validity and execution hit rate |
+| **rule_generation_code_evaluator** | Rule generation | ES\|QL syntax validity and execution hit rate |
 | **ki_duplication** | KI duplication | Structural deduplication |
 
 ### LLM-as-a-judge evaluators
 
 | Evaluator | Suite | Description |
 | --- | --- | --- |
-| **scenario_criteria** | KI extraction, Query generation | Scenario-specific criteria (e.g. "must identify payment service") |
+| **scenario_criteria** | KI extraction, Rule generation | Scenario-specific criteria (e.g. "must identify payment service") |
 | **llm_semantic_uniqueness** | KI duplication | Semantic deduplication across KIs |
 | **llm_id_consistency** | KI duplication | Same KI ID refers to the same concept across runs |
 

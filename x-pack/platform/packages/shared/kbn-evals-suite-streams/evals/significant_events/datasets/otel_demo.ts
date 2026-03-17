@@ -378,7 +378,7 @@ export const otelDemoDataset: DatasetConfig = {
       },
     },
   ],
-  queryGeneration: [
+  ruleGeneration: [
     {
       input: {
         scenario_id: 'healthy-baseline',

@@ -29,7 +29,7 @@ import { collectSampleDocuments } from './collect_sample_documents';
 
 const snapshotCatalogKey = (gcs: GcsConfig): string => `${gcs.bucket}/${gcs.basePathPrefix}`;
 
-evaluate.describe('Streams KI extraction', { tag: tags.serverless.observability.complete }, () => {
+evaluate.describe('KI extraction', { tag: tags.serverless.observability.complete }, () => {
   const activeDatasets = getActiveDatasets();
   const kiExtractionRuns = activeDatasets.flatMap((dataset) =>
     dataset.kiExtraction.map((scenario) => ({ dataset, scenario }))

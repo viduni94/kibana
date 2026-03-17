@@ -23,7 +23,7 @@ import {
   createIdConsistencyEvaluator,
 } from '../../../src/evaluators/ki_duplication_evaluators';
 
-evaluate.describe('Streams KI duplication (harness)', () => {
+evaluate.describe('KI duplication (harness)', () => {
   const from = kbnDatemath.parse('now-10m')!;
   const to = kbnDatemath.parse('now')!;
 

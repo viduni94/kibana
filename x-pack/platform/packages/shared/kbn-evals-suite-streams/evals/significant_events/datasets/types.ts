@@ -22,7 +22,7 @@ export interface SnapshotSourceOverride {
   };
 }
 
-export interface QueryGenerationScenario {
+export interface RuleGenerationScenario {
   input: {
     scenario_id: string;
     stream_name: string;
@@ -56,7 +56,7 @@ export interface KIExtractionScenario {
 
 /**
  * A dataset provider supplies snapshot source defaults and evaluation criteria
- * for both query generation and KI extraction evals.
+ * for both rule generation and KI extraction evals.
  *
  * To add a new dataset:
  * 1. Create a file in this directory (e.g. `my_app.ts`, similar to otel_demo)
@@ -68,6 +68,6 @@ export interface DatasetConfig {
   id: string;
   description: string;
   gcs: GcsConfig;
-  queryGeneration: QueryGenerationScenario[];
+  ruleGeneration: RuleGenerationScenario[];
   kiExtraction: KIExtractionScenario[];
 }
