@@ -12,11 +12,13 @@ import {
   SIGNIFICANT_EVENT_TYPE_RESOURCE_HEALTH,
   SIGNIFICANT_EVENT_TYPE_SECURITY,
 } from '@kbn/streams-ai/src/significant_events/types';
+import { mean } from 'lodash';
 import type { ElasticsearchClient, Logger } from '@kbn/core/server';
 import { selectEvaluators } from '@kbn/evals';
 import type { EvaluationCriterion, Evaluator } from '@kbn/evals';
 import type { SignificantEventType } from '@kbn/streams-ai/src/significant_events/types';
 import { createScenarioCriteriaLlmEvaluator } from './scenario_criteria_llm_evaluator';
+import { matchesEvidenceText } from './evidence_text_matching';
 
 const ALLOWED_CATEGORIES = [
   SIGNIFICANT_EVENT_TYPE_OPERATIONAL,
@@ -25,8 +27,6 @@ const ALLOWED_CATEGORIES = [
   SIGNIFICANT_EVENT_TYPE_ERROR,
   SIGNIFICANT_EVENT_TYPE_SECURITY,
 ];
-
-const SHORT_EVIDENCE_MAX_LENGTH = 3;
 
 interface RuleGenerationEvaluationExample {
   input: { sample_logs: string[] } & Record<string, unknown>;
@@ -56,65 +56,42 @@ const getQueriesFromOutput = (output: RuleGenerationOutput): Query[] => {
   return Array.isArray(output) ? output : output.queries;
 };
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+interface QueryValidationDetail {
+  esql: string;
+  isSyntaxValid: boolean;
+  isExecutionHit: boolean;
+  isCategoryCompliant: boolean;
+  isSeverityCompliant: boolean;
+  evidenceValidation: { allEvidenceFound: boolean; missingEvidence: string[] };
 }
 
-function matchesEvidenceInLog(logLine: string, evidence: string): boolean {
-  const normalizedEvidence = evidence.trim();
-  if (normalizedEvidence.length === 0) {
-    return false;
-  }
-
-  if (normalizedEvidence.length <= SHORT_EVIDENCE_MAX_LENGTH) {
-    return new RegExp(`(^|[^a-zA-Z0-9_])${escapeRegExp(normalizedEvidence)}($|[^a-zA-Z0-9_])`).test(
-      logLine
-    );
-  }
-
-  return logLine.includes(normalizedEvidence);
-}
-
-const evaluateRuleGenerationCode = async ({
+const validateQueries = async ({
   queries,
   sampleLogs,
-  expectedCategories,
-  expectedEsqlSubstrings,
   esClient,
   logger,
 }: {
   queries: Query[];
   sampleLogs: string[];
-  expectedCategories: string[];
-  expectedEsqlSubstrings: string[];
   esClient: ElasticsearchClient;
   logger?: Logger;
-}) => {
-  if (queries.length === 0 || !queries[0] || !queries[0].esql) {
-    return {
-      score: 0,
-      explanation: 'No queries generated',
-      details: {
-        syntaxValidityRate: 0,
-        executionHitRate: 0,
-      },
-    };
-  }
-
+}): Promise<{
+  validationDetails: QueryValidationDetail[];
+  validSyntaxCount: number;
+  executionHitCount: number;
+  categoryComplianceCount: number;
+  severityComplianceCount: number;
+  groundedEvidenceCount: number;
+  totalEvidenceCount: number;
+}> => {
   let validSyntaxCount = 0;
   let executionHitCount = 0;
   let categoryComplianceCount = 0;
   let severityComplianceCount = 0;
   let groundedEvidenceCount = 0;
   let totalEvidenceCount = 0;
-  const validationDetails: Array<{
-    esql: string;
-    isSyntaxValid: boolean;
-    isExecutionHit: boolean;
-    isCategoryCompliant: boolean;
-    isSeverityCompliant: boolean;
-    evidenceValidation: { allEvidenceFound: boolean; missingEvidence: string[] };
-  }> = [];
+
+  const validationDetails: QueryValidationDetail[] = [];
 
   for (const query of queries) {
     const { esql, category, severity_score, evidence = [] } = query;
@@ -154,7 +131,7 @@ const evaluateRuleGenerationCode = async ({
     if (evidence.length > 0) {
       totalEvidenceCount += evidence.length;
       const missing = evidence.filter(
-        (ev: string) => !sampleLogs.some((logLine) => matchesEvidenceInLog(logLine, ev))
+        (ev: string) => !sampleLogs.some((logLine) => matchesEvidenceText(logLine, ev))
       );
       if (missing.length > 0) {
         evidenceValidation.allEvidenceFound = false;
@@ -173,27 +150,139 @@ const evaluateRuleGenerationCode = async ({
     });
   }
 
+  return {
+    validationDetails,
+    validSyntaxCount,
+    executionHitCount,
+    categoryComplianceCount,
+    severityComplianceCount,
+    groundedEvidenceCount,
+    totalEvidenceCount,
+  };
+};
+
+const computeExpectedCoverage = (expectedValues: string[], observedValues: Set<string>) => {
+  const missing = expectedValues.filter((value) => !observedValues.has(value));
+  const coverageRate =
+    expectedValues.length > 0
+      ? (expectedValues.length - missing.length) / expectedValues.length
+      : null;
+
+  return { coverageRate, missing };
+};
+
+const computeEsqlSubstringCoverage = (expectedSubstrings: string[], queries: Query[]) => {
+  const normalizedEsql = queries.map((query) => query.esql.toLowerCase());
+  const missing = expectedSubstrings.filter(
+    (substring) => !normalizedEsql.some((esql) => esql.includes(substring.toLowerCase()))
+  );
+  const coverageRate =
+    expectedSubstrings.length > 0
+      ? (expectedSubstrings.length - missing.length) / expectedSubstrings.length
+      : null;
+
+  return { coverageRate, missing };
+};
+
+/**
+ * Formats human-readable validation failures for the rule-generation CODE evaluator.
+ */
+const buildRuleGenerationValidationIssues = ({
+  queriesCount,
+  validSyntaxCount,
+  executionHitCount,
+  invalidCategoriesCount,
+  invalidSeveritiesCount,
+  missingExpectedCategories,
+  missingEsqlSubstrings,
+  missingEvidence,
+}: {
+  queriesCount: number;
+  validSyntaxCount: number;
+  executionHitCount: number;
+  invalidCategoriesCount: number;
+  invalidSeveritiesCount: number;
+  missingExpectedCategories: string[];
+  missingEsqlSubstrings: string[];
+  missingEvidence: string[];
+}): string[] => {
+  const issues: string[] = [];
+
+  if (validSyntaxCount < queriesCount) {
+    issues.push(
+      `${queriesCount - validSyntaxCount}/${queriesCount} queries have invalid ES|QL syntax`
+    );
+  }
+  if (executionHitCount < queriesCount) {
+    issues.push(`${queriesCount - executionHitCount}/${queriesCount} queries returned no hits`);
+  }
+  if (invalidCategoriesCount > 0) {
+    issues.push(`${invalidCategoriesCount} queries use unsupported categories`);
+  }
+  if (invalidSeveritiesCount > 0) {
+    issues.push(`${invalidSeveritiesCount} queries have severity outside [0, 100]`);
+  }
+  if (missingExpectedCategories.length > 0) {
+    issues.push(`Missing expected categories: ${missingExpectedCategories.join(', ')}`);
+  }
+  if (missingEsqlSubstrings.length > 0) {
+    issues.push(`Missing expected ES|QL substrings: ${missingEsqlSubstrings.join(', ')}`);
+  }
+  if (missingEvidence.length > 0) {
+    issues.push(`Evidence not found in sample logs: ${missingEvidence.slice(0, 5).join(', ')}`);
+  }
+
+  return issues;
+};
+
+const evaluateRuleGenerationCode = async ({
+  queries,
+  sampleLogs,
+  expectedCategories,
+  expectedEsqlSubstrings,
+  esClient,
+  logger,
+}: {
+  queries: Query[];
+  sampleLogs: string[];
+  expectedCategories: string[];
+  expectedEsqlSubstrings: string[];
+  esClient: ElasticsearchClient;
+  logger?: Logger;
+}) => {
+  if (queries.length === 0 || !queries[0] || !queries[0].esql) {
+    return {
+      score: 0,
+      explanation: 'No queries generated',
+      details: {
+        syntaxValidityRate: 0,
+        executionHitRate: 0,
+      },
+    };
+  }
+
+  const {
+    validationDetails,
+    validSyntaxCount,
+    executionHitCount,
+    categoryComplianceCount,
+    severityComplianceCount,
+    groundedEvidenceCount,
+    totalEvidenceCount,
+  } = await validateQueries({ queries, sampleLogs, esClient, logger });
+
   const syntaxValidityRate = validSyntaxCount / queries.length;
   const executionHitRate = executionHitCount / queries.length;
   const categoryComplianceRate = categoryComplianceCount / queries.length;
   const severityComplianceRate = severityComplianceCount / queries.length;
+
   const observedCategories = new Set(queries.map((query) => query.category.toLowerCase()));
-  const missingExpectedCategories = expectedCategories.filter(
-    (category) => !observedCategories.has(category)
-  );
-  const expectedCategoryCoverageRate =
-    expectedCategories.length > 0
-      ? (expectedCategories.length - missingExpectedCategories.length) / expectedCategories.length
-      : null;
-  const normalizedEsql = queries.map((query) => query.esql.toLowerCase());
-  const missingEsqlSubstrings = expectedEsqlSubstrings.filter(
-    (substring) => !normalizedEsql.some((esql) => esql.includes(substring.toLowerCase()))
-  );
-  const esqlSubstringCoverageRate =
-    expectedEsqlSubstrings.length > 0
-      ? (expectedEsqlSubstrings.length - missingEsqlSubstrings.length) /
-        expectedEsqlSubstrings.length
-      : null;
+  const { coverageRate: expectedCategoryCoverageRate, missing: missingExpectedCategories } =
+    computeExpectedCoverage(expectedCategories, observedCategories);
+
+  const { coverageRate: esqlSubstringCoverageRate, missing: missingEsqlSubstrings } =
+    computeEsqlSubstringCoverage(expectedEsqlSubstrings, queries);
+
   const evidenceGroundingRate =
     totalEvidenceCount > 0 ? groundedEvidenceCount / totalEvidenceCount : null;
 
@@ -206,43 +295,23 @@ const evaluateRuleGenerationCode = async ({
     ...(esqlSubstringCoverageRate == null ? [] : [esqlSubstringCoverageRate]),
     ...(evidenceGroundingRate == null ? [] : [evidenceGroundingRate]),
   ];
-  const score =
-    scoreComponents.reduce((sum, component) => sum + component, 0) / scoreComponents.length;
+  const score = mean(scoreComponents);
 
-  const invalidCategories = validationDetails
-    .filter((detail) => !detail.isCategoryCompliant)
-    .map((detail) => detail.esql);
-  const invalidSeverities = queries
-    .filter((query) => query.severity_score < 0 || query.severity_score > 100)
-    .map((query) => `${query.title} (${query.severity_score})`);
+  const invalidCategoriesCount = queries.length - categoryComplianceCount;
+  const invalidSeveritiesCount = queries.length - severityComplianceCount;
   const missingEvidence = validationDetails.flatMap(
     (detail) => detail.evidenceValidation.missingEvidence
   );
-  const issues: string[] = [];
-
-  if (syntaxValidityRate < 1) {
-    issues.push(
-      `${queries.length - validSyntaxCount}/${queries.length} queries have invalid ES|QL syntax`
-    );
-  }
-  if (executionHitRate < 1) {
-    issues.push(`${queries.length - executionHitCount}/${queries.length} queries returned no hits`);
-  }
-  if (categoryComplianceRate < 1) {
-    issues.push(`${invalidCategories.length} queries use unsupported categories`);
-  }
-  if (severityComplianceRate < 1) {
-    issues.push(`${invalidSeverities.length} queries have severity outside [0, 100]`);
-  }
-  if (missingExpectedCategories.length > 0) {
-    issues.push(`Missing expected categories: ${missingExpectedCategories.join(', ')}`);
-  }
-  if (missingEsqlSubstrings.length > 0) {
-    issues.push(`Missing expected ES|QL substrings: ${missingEsqlSubstrings.join(', ')}`);
-  }
-  if (missingEvidence.length > 0) {
-    issues.push(`Evidence not found in sample logs: ${missingEvidence.slice(0, 5).join(', ')}`);
-  }
+  const issues = buildRuleGenerationValidationIssues({
+    queriesCount: queries.length,
+    validSyntaxCount,
+    executionHitCount,
+    invalidCategoriesCount,
+    invalidSeveritiesCount,
+    missingExpectedCategories,
+    missingEsqlSubstrings,
+    missingEvidence,
+  });
 
   return {
     score,
@@ -313,6 +382,7 @@ export const createRuleGenerationEvaluators = (
       criteriaFn: (c) =>
         criteriaFn(c) as Evaluator<RuleGenerationEvaluationExample, RuleGenerationOutput>,
       criteria,
+      transformOutput: (output) => getQueriesFromOutput(output),
     }),
   ];
 };

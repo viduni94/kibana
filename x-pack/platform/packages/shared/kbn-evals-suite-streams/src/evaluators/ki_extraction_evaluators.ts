@@ -11,6 +11,7 @@ import type { BaseFeature } from '@kbn/streams-schema';
 import type { EvaluationCriterion, Evaluator } from '@kbn/evals';
 import type { SearchHit } from '@elastic/elasticsearch/lib/api/types';
 import { createScenarioCriteriaLlmEvaluator } from './scenario_criteria_llm_evaluator';
+import { matchesEvidenceText } from './evidence_text_matching';
 
 export const VALID_KI_TYPES = [
   'entity',
@@ -147,27 +148,6 @@ function getAllStringValues(doc: Record<string, unknown>): string[] {
   return values;
 }
 
-const SHORT_EVIDENCE_MAX_LENGTH = 3;
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function matchesDirectEvidence(value: string, evidence: string): boolean {
-  const normalizedEvidence = evidence.trim();
-  if (normalizedEvidence.length === 0) {
-    return false;
-  }
-
-  if (normalizedEvidence.length <= SHORT_EVIDENCE_MAX_LENGTH) {
-    return new RegExp(`(^|[^a-zA-Z0-9_])${escapeRegExp(normalizedEvidence)}($|[^a-zA-Z0-9_])`).test(
-      value
-    );
-  }
-
-  return value.includes(normalizedEvidence);
-}
-
 /**
  * Checks whether a single evidence string is grounded in the input documents.
  *
@@ -179,8 +159,9 @@ function matchesDirectEvidence(value: string, evidence: string): boolean {
 function isEvidenceGrounded(evidence: string, documents: Array<Record<string, unknown>>): boolean {
   const matchesStringValue = documents.some((doc) => {
     const allValues = getAllStringValues(doc);
-    return allValues.some((val) => matchesDirectEvidence(val, evidence));
+    return allValues.some((val) => matchesEvidenceText(val, evidence));
   });
+
   if (matchesStringValue) {
     return true;
   }
@@ -471,6 +452,7 @@ export const createKIExtractionEvaluators = (scenarioCriteria?: {
       criteriaFn: (c) =>
         criteriaFn(c) as Evaluator<KIExtractionEvaluationExample, KIExtractionOutput>,
       criteria,
+      transformOutput: (output) => getKIsFromOutput(output),
     }),
   ];
 };

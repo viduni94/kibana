@@ -146,10 +146,12 @@ evaluate.describe('Rule generation', { tag: tags.serverless.observability.comple
 
           await esClient.indices.refresh({ index: MANAGED_STREAM_SEARCH_PATTERN });
 
+          const query = extractionScenario?.input.log_query_filter ?? { match_all: {} };
+
           const searchResult = await esClient.search<Record<string, unknown>>({
             index: MANAGED_STREAM_SEARCH_PATTERN,
             size: SAMPLE_DOCS_SIZE,
-            query: { match_all: {} },
+            query,
             sort: [{ '@timestamp': { order: 'desc' } }],
           });
 
