@@ -318,7 +318,7 @@ const evaluateKIQueryGenerationCode = async ({
     explanation:
       issues.length > 0
         ? `${issues.join('; ')} (score=${score.toFixed(2)})`
-        : `All ${queries.length} generated rules passed code validation`,
+        : `All ${queries.length} generated queries passed code validation`,
     details: {
       syntaxValidityRate,
       executionHitRate,

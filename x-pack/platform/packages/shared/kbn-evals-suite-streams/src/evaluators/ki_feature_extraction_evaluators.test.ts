@@ -131,7 +131,7 @@ describe('evidence grounding evaluator', () => {
   });
 });
 
-describe('ki count evaluator', () => {
+describe('ki_feature_count evaluator', () => {
   it('returns full credit when the KI count is within bounds', async () => {
     const result = await kiFeatureCountEvaluator!.evaluate({
       input: {

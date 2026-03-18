@@ -77,12 +77,20 @@ describe('load_ki_features_from_snapshot', () => {
   });
 
   it('restores into temp index and returns matching KI feature docs', async () => {
-    mockRestoreSnapshot.mockResolvedValue({
-      success: true,
-      snapshotName: 'payment-unreachable',
-      restoredIndices: ['sigevents-replay-temp-features'],
-      errors: [],
-    });
+    mockRestoreSnapshot.mockImplementation(
+      async ({
+        snapshotName,
+        renameReplacement,
+      }: {
+        snapshotName: string;
+        renameReplacement: string;
+      }) => ({
+        success: true,
+        snapshotName,
+        restoredIndices: [renameReplacement],
+        errors: [],
+      })
+    );
 
     const esClient = makeEsClient();
     esClient.indices.delete.mockResolvedValue({} as never);
@@ -95,9 +103,7 @@ describe('load_ki_features_from_snapshot', () => {
       },
     } as never);
 
-    const { loadKIFeaturesFromSnapshot, KI_FEATURES_TEMP_INDEX } = await import(
-      './load_ki_features_from_snapshot'
-    );
+    const { loadKIFeaturesFromSnapshot } = await import('./load_ki_features_from_snapshot');
     const features = await loadKIFeaturesFromSnapshot(
       esClient as unknown as Client,
       log as unknown as ToolingLog,
@@ -113,12 +119,21 @@ describe('load_ki_features_from_snapshot', () => {
       basePath: `2026-02-26-test/${OTEL_DEMO_GCS_BASE_PATH_PREFIX}`,
     });
 
+    const restoreArgs = mockRestoreSnapshot.mock.calls[0][0] as { renameReplacement: string };
+    const tempIndex = restoreArgs.renameReplacement;
+
     expect(mockRestoreSnapshot).toHaveBeenCalledWith(
       expect.objectContaining({
         snapshotName: 'payment-unreachable',
         renamePattern: '(.+)',
-        renameReplacement: KI_FEATURES_TEMP_INDEX,
+        renameReplacement: expect.stringMatching(/^sigevents-replay-temp-features-/),
         allowNoMatches: true,
+      })
+    );
+
+    expect(esClient.search).toHaveBeenCalledWith(
+      expect.objectContaining({
+        index: tempIndex,
       })
     );
   });
@@ -148,15 +163,21 @@ describe('load_ki_features_from_snapshot', () => {
   });
 
   it('cleans up the temp index at the end even if search throws', async () => {
-    const { loadKIFeaturesFromSnapshot, KI_FEATURES_TEMP_INDEX } = await import(
-      './load_ki_features_from_snapshot'
+    const { loadKIFeaturesFromSnapshot } = await import('./load_ki_features_from_snapshot');
+    mockRestoreSnapshot.mockImplementation(
+      async ({
+        snapshotName,
+        renameReplacement,
+      }: {
+        snapshotName: string;
+        renameReplacement: string;
+      }) => ({
+        success: true,
+        snapshotName,
+        restoredIndices: [renameReplacement],
+        errors: [],
+      })
     );
-    mockRestoreSnapshot.mockResolvedValue({
-      success: true,
-      snapshotName: 'payment-unreachable',
-      restoredIndices: [KI_FEATURES_TEMP_INDEX],
-      errors: [],
-    });
 
     const esClient = makeEsClient();
     esClient.indices.delete.mockResolvedValue({} as never);
@@ -172,9 +193,12 @@ describe('load_ki_features_from_snapshot', () => {
       )
     ).rejects.toThrow('boom');
 
+    const restoreArgs = mockRestoreSnapshot.mock.calls[0][0] as { renameReplacement: string };
+    const tempIndex = restoreArgs.renameReplacement;
+
     expect(esClient.indices.delete.mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(esClient.indices.delete).toHaveBeenCalledWith({
-      index: KI_FEATURES_TEMP_INDEX,
+      index: tempIndex,
       ignore_unavailable: true,
     });
   });
