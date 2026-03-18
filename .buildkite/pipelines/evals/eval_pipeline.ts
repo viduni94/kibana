@@ -67,6 +67,23 @@ function parseGithubPrLabels(raw: string): string[] {
     .filter(Boolean);
 }
 
+/**
+ * Named model group aliases. These allow a single label (e.g. `models:weekly-eis-models`)
+ * to expand into multiple individual model groups for the eval fanout.
+ *
+ * Keep in sync with the weekly pipeline EVAL_MODEL_GROUPS in llm_evals.yml.
+ */
+const MODEL_GROUP_ALIASES: Record<string, string[]> = {
+  'weekly-eis-models': [
+    'eis/anthropic-claude-4.5-sonnet',
+    'eis/anthropic-claude-4.6-opus',
+    'eis/google-gemini-3.0-flash',
+    'eis/google-gemini-3.0-pro',
+    'eis/openai-gpt-5.2',
+    'eis/openai-gpt-oss-120b',
+  ],
+};
+
 function normalizeEvaluationConnectorId(raw: string): string {
   // Support `models:judge:eis/<modelId>` where the judge value is a model id, not a connector id.
   if (raw.startsWith('eis/')) {
@@ -172,7 +189,7 @@ export function getEvalPipeline(githubPrLabels: string): string | null {
   // - No `models:*` labels => run all models returned by LiteLLM (current behavior).
   // - One or more `models:<model-group>` labels => only run connectors whose `defaultModel`
   //   matches one of those model groups.
-  // - `models:all` can be used to explicitly opt into all models (ignored if combined with specifics).
+  // - Alias labels (e.g. `models:weekly-eis-models`) expand to their predefined model groups.
   const rawEvaluationConnectorId = parsedLabels
     .find((label) => label.startsWith('models:judge:'))
     ?.slice('models:judge:'.length)
@@ -180,16 +197,20 @@ export function getEvalPipeline(githubPrLabels: string): string | null {
   const evaluationConnectorId = rawEvaluationConnectorId
     ? normalizeEvaluationConnectorId(rawEvaluationConnectorId)
     : undefined;
-  const includeEisModels =
-    parsedLabels.some((label) => label === 'models:all' || label.startsWith('models:eis/')) ||
-    !!rawEvaluationConnectorId?.startsWith('eis/') ||
-    !!evaluationConnectorId?.startsWith('eis-');
+
+  // Extract model groups from labels and expand any aliases.
   const selectedModelGroups = parsedLabels
     .filter((label) => label.startsWith('models:') && !label.startsWith('models:judge:'))
     .map((label) => label.slice('models:'.length))
     .map((value) => value.trim())
     .filter(Boolean)
-    .filter((value) => value !== 'all');
+    .filter((value) => value !== 'all')
+    .flatMap((value) => MODEL_GROUP_ALIASES[value] ?? [value]);
+
+  const includeEisModels =
+    selectedModelGroups.some((group) => group.startsWith('eis/')) ||
+    !!rawEvaluationConnectorId?.startsWith('eis/') ||
+    !!evaluationConnectorId?.startsWith('eis-');
 
   if (selectedEvalSuites.length === 0) {
     return null;

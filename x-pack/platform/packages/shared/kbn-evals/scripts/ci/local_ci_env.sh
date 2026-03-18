@@ -70,23 +70,12 @@ fi
 
 # NOTE: bash `set -e` does not reliably fail the script for errors inside `$(...)` in all contexts.
 # Generate into a variable, then explicitly validate it, so we never feed empty/invalid data into JSON.parse below.
-if [[ -n "${LITELLM_TEAM_ID:-}" ]]; then
-  KIBANA_TESTING_AI_CONNECTORS="$(
-    node x-pack/platform/packages/shared/kbn-evals/scripts/ci/generate_litellm_connectors.js \
-      --base-url "$LITELLM_BASE_URL" \
-      --team-id "$LITELLM_TEAM_ID" \
-      --api-key "$LITELLM_VIRTUAL_KEY" \
-      --model-prefix "llm-gateway/"
-  )"
-else
-  KIBANA_TESTING_AI_CONNECTORS="$(
-    node x-pack/platform/packages/shared/kbn-evals/scripts/ci/generate_litellm_connectors.js \
-      --base-url "$LITELLM_BASE_URL" \
-      --team-name "$LITELLM_TEAM_NAME" \
-      --api-key "$LITELLM_VIRTUAL_KEY" \
-      --model-prefix "llm-gateway/"
-  )"
-fi
+KIBANA_TESTING_AI_CONNECTORS="$(
+  node x-pack/platform/packages/shared/kbn-evals/scripts/ci/generate_litellm_connectors.js \
+    --base-url "$LITELLM_BASE_URL" \
+    --api-key "$LITELLM_VIRTUAL_KEY" \
+    --model-prefix "llm-gateway/"
+)"
 export KIBANA_TESTING_AI_CONNECTORS
 
 if [[ -z "${KIBANA_TESTING_AI_CONNECTORS:-}" ]]; then

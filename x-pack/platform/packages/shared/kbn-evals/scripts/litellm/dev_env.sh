@@ -92,12 +92,10 @@ fi
 
 export LITELLM_VIRTUAL_KEY="$VIRTUAL_KEY"
 
-echo "Generating KIBANA_TESTING_AI_CONNECTORS from team \"$TEAM_NAME\"..."
+echo "Generating KIBANA_TESTING_AI_CONNECTORS from LiteLLM..."
 KIBANA_TESTING_AI_CONNECTORS="$(
   node x-pack/platform/packages/shared/kbn-evals/scripts/ci/generate_litellm_connectors.js \
     --base-url "$BASE_URL" \
-    --team-id "$TEAM_ID" \
-    --team-name "$TEAM_NAME" \
     --api-key "$LITELLM_VIRTUAL_KEY" \
     --model-prefix "$MODEL_PREFIX"
 )"

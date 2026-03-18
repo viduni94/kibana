@@ -10,8 +10,8 @@
  * Generate `KIBANA_TESTING_AI_CONNECTORS` payload for @kbn/evals from LiteLLM.
  *
  * This script:
- * - resolves team id from team name (via /team/list or /team/available) unless --team-id is provided
- * - fetches team info (via /team/info?team_id=...) to discover accessible models
+ * - discovers available models via GET /v1/models (OpenAI-compatible endpoint)
+ * - fetches model info mappings for internal provider routing
  * - emits base64 JSON payload matching the expected connectors schema
  *
  * Auth: LiteLLM *virtual key* (sk-...) via Authorization Bearer.
@@ -73,65 +73,30 @@ function sanitizeId(value) {
     .replace(/^-|-$/g, '');
 }
 
-function unwrapCandidates(payload) {
-  if (Array.isArray(payload)) return payload;
-  if (!payload || typeof payload !== 'object') return [];
-  return (
-    payload.teams ||
-    payload.data ||
-    payload.items ||
-    payload.results ||
-    payload.available_teams ||
-    []
-  );
-}
+/**
+ * Discover available model names via the OpenAI-compatible GET /v1/models endpoint.
+ * When called with a team's virtual key, this returns only models accessible to that team.
+ *
+ * @param {string} baseUrl - LiteLLM proxy base URL
+ * @param {string} apiKey  - LiteLLM virtual key (scopes to team)
+ * @param {string} modelPrefix - Only return models starting with this prefix (e.g. "llm-gateway/")
+ * @returns {Promise<string[]>} Model names (without prefix stripped)
+ */
+async function fetchAvailableModelNames(baseUrl, apiKey, modelPrefix) {
+  const response = await httpJson(`${baseUrl}/v1/models`, apiKey);
 
-function normalizeTeamName(value) {
-  return String(value)
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-}
+  const entries = response && Array.isArray(response.data) ? response.data : [];
+  const models = new Set();
 
-function findTeamIdByName(teams, teamName) {
-  const target = normalizeTeamName(teamName);
-  for (const t of teams) {
-    if (!t || typeof t !== 'object') continue;
-    const aliasRaw = (t.team_alias ?? t.team_name ?? t.name ?? t.alias ?? '').toString();
-    const alias = normalizeTeamName(aliasRaw);
-    if (alias && alias === target) {
-      return t.team_id ?? t.id ?? t.teamId;
-    }
+  for (const entry of entries) {
+    const id = entry && typeof entry === 'object' ? entry.id : undefined;
+    if (typeof id !== 'string' || !id.trim()) continue;
+    // Only include models matching the expected prefix (e.g. "llm-gateway/").
+    if (modelPrefix && !id.startsWith(modelPrefix)) continue;
+    models.add(id.trim());
   }
-  return undefined;
-}
 
-function extractModelNames(teamInfo) {
-  if (!teamInfo || typeof teamInfo !== 'object') return [];
-
-  const nested = teamInfo.team_info || teamInfo.teamInfo || teamInfo.team;
-
-  const candidates =
-    teamInfo.models ||
-    teamInfo.model_list ||
-    teamInfo.allowed_models ||
-    (teamInfo.data &&
-      (teamInfo.data.models || teamInfo.data.model_list || teamInfo.data.allowed_models)) ||
-    (nested && (nested.models || nested.model_list || nested.allowed_models)) ||
-    [];
-
-  if (!Array.isArray(candidates)) return [];
-  return candidates
-    .map((m) => {
-      if (typeof m === 'string') return m;
-      if (m && typeof m === 'object') {
-        return m.model_name ?? m.model ?? m.name ?? m.id;
-      }
-      return undefined;
-    })
-    .filter(Boolean);
+  return [...models].sort();
 }
 
 async function httpJson(url, apiKey) {
@@ -187,25 +152,6 @@ async function httpJsonMaybe(url, apiKey, { allowStatuses = [404, 405] } = {}) {
   }
 }
 
-async function fetchTeams(baseUrl, apiKey) {
-  // LiteLLM deployments vary; prefer /team/list if present, fall back to /team/available.
-  const list = await httpJsonMaybe(`${baseUrl}/team/list`, apiKey);
-  if (list) {
-    return unwrapCandidates(list);
-  }
-
-  const available = await httpJsonMaybe(`${baseUrl}/team/available`, apiKey, {
-    allowStatuses: [404],
-  });
-  if (available) {
-    return unwrapCandidates(available);
-  }
-
-  die(
-    'Unable to list teams from LiteLLM. Tried /team/list and /team/available but neither endpoint is available.'
-  );
-}
-
 async function fetchModelInfoMappings(baseUrl, apiKey) {
   // This endpoint returns the LiteLLM model table, including internal provider mappings
   // (e.g. `litellm_params.model`). Some deployments may restrict it; treat as optional.
@@ -239,7 +185,6 @@ async function main() {
   const argv = parseArgs(process.argv.slice(2), {
     defaults: {
       'base-url': 'https://elastic.litellm-prod.ai',
-      'team-name': 'kibana-ci-evals',
       'model-prefix': 'llm-gateway/',
       format: 'base64',
     },
@@ -252,36 +197,15 @@ async function main() {
     die('Missing --api-key (or set LITELLM_VIRTUAL_KEY).');
   }
 
-  const teamIdArg = getArg(argv, 'team-id');
-  const teamName = getArg(argv, 'team-name');
   const modelPrefix = String(getArg(argv, 'model-prefix')).trim();
 
-  let teamId = teamIdArg;
-  if (!teamId) {
-    const teams = await fetchTeams(baseUrl, apiKey);
-    const resolved = findTeamIdByName(teams, teamName);
-    if (!resolved) {
-      const known = teams
-        .map((t) =>
-          t && typeof t === 'object' ? t.team_alias ?? t.team_name ?? t.name : undefined
-        )
-        .filter(Boolean)
-        .slice(0, 50);
-      die(
-        `Unable to resolve team id for team name "${teamName}".\n` +
-          `Known team names (first 50): ${known.join(', ') || '(none)'}.`
-      );
-    }
-    teamId = resolved;
-  }
-
-  const teamInfo = await httpJson(
-    `${baseUrl}/team/info?team_id=${encodeURIComponent(String(teamId))}`,
-    apiKey
-  );
-  const modelNames = extractModelNames(teamInfo);
+  // Discover available models via the OpenAI-compatible /v1/models endpoint.
+  // The virtual key scopes the response to models accessible to the team.
+  const modelNames = await fetchAvailableModelNames(baseUrl, apiKey, modelPrefix);
   if (modelNames.length === 0) {
-    die(`No models found for team_id=${teamId}. Unable to generate connectors.`);
+    die(
+      `No models found via GET /v1/models (prefix: "${modelPrefix}"). Unable to generate connectors.`
+    );
   }
 
   const modelInfoMappings = await fetchModelInfoMappings(baseUrl, apiKey);
@@ -305,9 +229,9 @@ async function main() {
     // like `llm-gateway/gpt-5.2-chat`, while internally routing that group to a provider-specific
     // model name (e.g. `gpt-5.2-chat-latest` as shown in the LiteLLM UI).
     //
-    // The team/model listing APIs we query typically return only the public model names, not the
-    // internal provider mapping. In our CI runs we observed requests for `*-chat` groups being
-    // routed to `*-chat-latest` and then failing with "Unknown model: *-chat-latest".
+    // The /v1/models endpoint returns only the public model names, not the internal provider
+    // mapping. In our CI runs we observed requests for `*-chat` groups being routed to
+    // `*-chat-latest` and then failing with "Unknown model: *-chat-latest".
     //
     // Workaround: if a non-`-chat` sibling model exists, prefer it for the actual request model
     // while keeping the connector id stable (so CI-configured EVALUATION_CONNECTOR_ID stays valid).
