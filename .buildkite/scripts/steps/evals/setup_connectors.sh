@@ -21,6 +21,8 @@ KBN_EVALS_CONFIG_JSON="$(printf '%s' "$KBN_EVALS_CONFIG_B64" | base64 -d)"
 
 LITELLM_BASE_URL="$(jq -r '.litellm.baseUrl // empty' <<<"$KBN_EVALS_CONFIG_JSON")"
 LITELLM_VIRTUAL_KEY="$(jq -r '.litellm.virtualKey // empty' <<<"$KBN_EVALS_CONFIG_JSON")"
+LITELLM_TEAM_ID="$(jq -r '.litellm.teamId // empty' <<<"$KBN_EVALS_CONFIG_JSON")"
+LITELLM_TEAM_NAME="$(jq -r '.litellm.teamName // "kibana-ci-evals"' <<<"$KBN_EVALS_CONFIG_JSON")"
 
 NEED_LITELLM_CONNECTORS="true"
 
@@ -54,12 +56,23 @@ fi
 if [[ "$NEED_LITELLM_CONNECTORS" == "true" ]]; then
   echo "--- Generating LiteLLM connectors"
 
-  KIBANA_TESTING_AI_CONNECTORS="$(
-    node x-pack/platform/packages/shared/kbn-evals/scripts/ci/generate_litellm_connectors.js \
-      --base-url "$LITELLM_BASE_URL" \
-      --api-key "$LITELLM_VIRTUAL_KEY" \
-      --model-prefix "llm-gateway/"
-  )"
+  if [[ -n "${LITELLM_TEAM_ID:-}" ]]; then
+    KIBANA_TESTING_AI_CONNECTORS="$(
+      node x-pack/platform/packages/shared/kbn-evals/scripts/ci/generate_litellm_connectors.js \
+        --base-url "$LITELLM_BASE_URL" \
+        --team-id "$LITELLM_TEAM_ID" \
+        --api-key "$LITELLM_VIRTUAL_KEY" \
+        --model-prefix "llm-gateway/"
+    )"
+  else
+    KIBANA_TESTING_AI_CONNECTORS="$(
+      node x-pack/platform/packages/shared/kbn-evals/scripts/ci/generate_litellm_connectors.js \
+        --base-url "$LITELLM_BASE_URL" \
+        --team-name "$LITELLM_TEAM_NAME" \
+        --api-key "$LITELLM_VIRTUAL_KEY" \
+        --model-prefix "llm-gateway/"
+    )"
+  fi
   export KIBANA_TESTING_AI_CONNECTORS
 
   if [[ -z "${KIBANA_TESTING_AI_CONNECTORS:-}" ]]; then

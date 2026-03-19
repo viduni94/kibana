@@ -10,8 +10,9 @@
  * Generate `KIBANA_TESTING_AI_CONNECTORS` payload for @kbn/evals from LiteLLM.
  *
  * This script:
- * - discovers available models via GET /v1/models (OpenAI-compatible endpoint)
- * - fetches model info mappings for internal provider routing
+ * - resolves team id from team name (via /team/list or /team/available) unless --team-id is provided
+ * - fetches team info (via /team/info?team_id=...) to discover accessible models
+ * - falls back to GET /v1/models when the team returns a catch-all like "all-proxy-models"
  * - emits base64 JSON payload matching the expected connectors schema
  *
  * Auth: LiteLLM *virtual key* (sk-...) via Authorization Bearer.
@@ -71,6 +72,70 @@ function sanitizeId(value) {
     .replace(/[^a-z0-9_-]+/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '');
+}
+
+/** Catch-all model name returned by /team/info when a team has access to all proxy models. */
+const ALL_PROXY_MODELS = 'all-proxy-models';
+
+function unwrapCandidates(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== 'object') return [];
+  return (
+    payload.teams ||
+    payload.data ||
+    payload.items ||
+    payload.results ||
+    payload.available_teams ||
+    []
+  );
+}
+
+function normalizeTeamName(value) {
+  return String(value)
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+function findTeamIdByName(teams, teamName) {
+  const target = normalizeTeamName(teamName);
+  for (const t of teams) {
+    if (!t || typeof t !== 'object') continue;
+    const aliasRaw = (t.team_alias ?? t.team_name ?? t.name ?? t.alias ?? '').toString();
+    const alias = normalizeTeamName(aliasRaw);
+    if (alias && alias === target) {
+      return t.team_id ?? t.id ?? t.teamId;
+    }
+  }
+  return undefined;
+}
+
+function extractModelNames(teamInfo) {
+  if (!teamInfo || typeof teamInfo !== 'object') return [];
+
+  const nested = teamInfo.team_info || teamInfo.teamInfo || teamInfo.team;
+
+  const candidates =
+    teamInfo.models ||
+    teamInfo.model_list ||
+    teamInfo.allowed_models ||
+    (teamInfo.data &&
+      (teamInfo.data.models || teamInfo.data.model_list || teamInfo.data.allowed_models)) ||
+    (nested && (nested.models || nested.model_list || nested.allowed_models)) ||
+    [];
+
+  if (!Array.isArray(candidates)) return [];
+  return candidates
+    .map((m) => {
+      if (typeof m === 'string') return m;
+      if (m && typeof m === 'object') {
+        return m.model_name ?? m.model ?? m.name ?? m.id;
+      }
+      return undefined;
+    })
+    .filter(Boolean);
 }
 
 /**
@@ -152,6 +217,25 @@ async function httpJsonMaybe(url, apiKey, { allowStatuses = [404, 405] } = {}) {
   }
 }
 
+async function fetchTeams(baseUrl, apiKey) {
+  // LiteLLM deployments vary; prefer /team/list if present, fall back to /team/available.
+  const list = await httpJsonMaybe(`${baseUrl}/team/list`, apiKey);
+  if (list) {
+    return unwrapCandidates(list);
+  }
+
+  const available = await httpJsonMaybe(`${baseUrl}/team/available`, apiKey, {
+    allowStatuses: [404],
+  });
+  if (available) {
+    return unwrapCandidates(available);
+  }
+
+  die(
+    'Unable to list teams from LiteLLM. Tried /team/list and /team/available but neither endpoint is available.'
+  );
+}
+
 async function fetchModelInfoMappings(baseUrl, apiKey) {
   // This endpoint returns the LiteLLM model table, including internal provider mappings
   // (e.g. `litellm_params.model`). Some deployments may restrict it; treat as optional.
@@ -185,6 +269,7 @@ async function main() {
   const argv = parseArgs(process.argv.slice(2), {
     defaults: {
       'base-url': 'https://elastic.litellm-prod.ai',
+      'team-name': 'kibana-ci-evals',
       'model-prefix': 'llm-gateway/',
       format: 'base64',
     },
@@ -197,15 +282,59 @@ async function main() {
     die('Missing --api-key (or set LITELLM_VIRTUAL_KEY).');
   }
 
+  const teamIdArg = getArg(argv, 'team-id');
+  const teamName = getArg(argv, 'team-name');
   const modelPrefix = String(getArg(argv, 'model-prefix')).trim();
 
-  // Discover available models via the OpenAI-compatible /v1/models endpoint.
-  // The virtual key scopes the response to models accessible to the team.
-  const modelNames = await fetchAvailableModelNames(baseUrl, apiKey, modelPrefix);
-  if (modelNames.length === 0) {
-    die(
-      `No models found via GET /v1/models (prefix: "${modelPrefix}"). Unable to generate connectors.`
+  // Primary path: resolve team and fetch models via /team/info.
+  // This returns a scoped model list for teams with specific model permissions.
+  let modelNames = [];
+
+  if (teamIdArg || teamName) {
+    let teamId = teamIdArg;
+    if (!teamId) {
+      const teams = await fetchTeams(baseUrl, apiKey);
+      const resolved = findTeamIdByName(teams, teamName);
+      if (!resolved) {
+        const known = teams
+          .map((t) =>
+            t && typeof t === 'object' ? t.team_alias ?? t.team_name ?? t.name : undefined
+          )
+          .filter(Boolean)
+          .slice(0, 50);
+        die(
+          `Unable to resolve team id for team name "${teamName}".\n` +
+            `Known team names (first 50): ${known.join(', ') || '(none)'}.`
+        );
+      }
+      teamId = resolved;
+    }
+
+    const teamInfo = await httpJson(
+      `${baseUrl}/team/info?team_id=${encodeURIComponent(String(teamId))}`,
+      apiKey
     );
+    modelNames = extractModelNames(teamInfo);
+
+    // Fallback: if the team returns a catch-all like "all-proxy-models" instead of
+    // individual model names, discover models via GET /v1/models instead.
+    const isCatchAll =
+      modelNames.length > 0 && modelNames.every((m) => String(m) === ALL_PROXY_MODELS);
+    if (isCatchAll) {
+      process.stderr.write(
+        `Team returned all proxy models (${modelNames.join(
+          ', '
+        )}); falling back to GET /v1/models.\n`
+      );
+      modelNames = await fetchAvailableModelNames(baseUrl, apiKey, modelPrefix);
+    }
+  } else {
+    // No team specified — discover all accessible models directly.
+    modelNames = await fetchAvailableModelNames(baseUrl, apiKey, modelPrefix);
+  }
+
+  if (modelNames.length === 0) {
+    die('No models found. Unable to generate connectors.');
   }
 
   const modelInfoMappings = await fetchModelInfoMappings(baseUrl, apiKey);

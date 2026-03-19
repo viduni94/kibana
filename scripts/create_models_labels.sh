@@ -241,13 +241,14 @@ const cfgPath = process.argv[2];
 const cfg = require(Path.resolve(cfgPath));
 const litellm = cfg && cfg.litellm ? cfg.litellm : {};
 const baseUrl = litellm.baseUrl || '';
+const teamId = litellm.teamId || '';
 const virtualKey = litellm.virtualKey || '';
-process.stdout.write([baseUrl, virtualKey].join('\t'));
+process.stdout.write([baseUrl, teamId, virtualKey].join('\t'));
 NODE
   )"
 
-  local base_url virtual_key
-  IFS=$'\t' read -r base_url virtual_key <<<"${litellm_tsv}"
+  local base_url team_id virtual_key
+  IFS=$'\t' read -r base_url team_id virtual_key <<<"${litellm_tsv}"
 
   if [[ -z "${base_url}" || -z "${virtual_key}" ]]; then
     echo "Error: missing litellm.baseUrl or litellm.virtualKey in ${cfg_path}" >&2
@@ -255,8 +256,14 @@ NODE
   fi
 
   # Do not echo the key. Pass it directly to the generator script.
+  local team_args=()
+  if [[ -n "${team_id}" ]]; then
+    team_args+=(--team-id "${team_id}")
+  fi
+
   node x-pack/platform/packages/shared/kbn-evals/scripts/ci/generate_litellm_connectors.js \
     --base-url "${base_url}" \
+    "${team_args[@]}" \
     --api-key "${virtual_key}" \
     --format json
 }
