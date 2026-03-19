@@ -433,8 +433,16 @@ if [[ "${PRUNE}" == "true" && -n "${CREATED_LABELS_FILE:-}" ]]; then
     # Fetch all existing models:* labels from the repo (excluding already-deprecated ones).
     existing_labels="$(gh label list "${GH_REPO_ARGS[@]}" --search "models:" --limit 500 --json name --jq '.[].name' \
       | grep -E '^models:' \
-      | grep -v '(deprecated)' \
       | sort -u || true)"
+    # Also fetch deprecated:models:* labels so we don't re-deprecate them.
+    already_deprecated="$(gh label list "${GH_REPO_ARGS[@]}" --search "deprecated:models:" --limit 500 --json name --jq '.[].name' \
+      | grep -E '^deprecated:models:' \
+      | sed 's/^deprecated://' \
+      | sort -u || true)"
+    # Exclude labels that already have a deprecated: counterpart.
+    if [[ -n "${already_deprecated}" ]]; then
+      existing_labels="$(comm -23 <(echo "${existing_labels}") <(echo "${already_deprecated}") || true)"
+    fi
 
     if [[ -z "${existing_labels}" ]]; then
       echo "No existing models:* labels found; nothing to deprecate."
@@ -449,7 +457,7 @@ if [[ "${PRUNE}" == "true" && -n "${CREATED_LABELS_FILE:-}" ]]; then
       else
         while IFS= read -r stale_label; do
           [[ -z "$stale_label" ]] && continue
-          deprecated_name="${stale_label} (deprecated)"
+          deprecated_name="deprecated:${stale_label}"
           if gh label edit "${GH_REPO_ARGS[@]}" "$stale_label" --name "$deprecated_name" --description "DEPRECATED - model no longer available" --color "$DEPRECATED_COLOR" >/dev/null 2>&1; then
             echo "deprecated: $stale_label -> $deprecated_name"
             DEPRECATED_COUNT=$((DEPRECATED_COUNT + 1))

@@ -199,13 +199,9 @@ The `models:*` and `models:judge:*` labels are automatically synced from LiteLLM
 The sync step:
 1. Discovers available models from both **LiteLLM** (`GET /v1/models`) and **EIS** (via `discover_eis_models.js`)
 2. Creates/updates labels for all discovered models
-3. Marks stale labels as deprecated (renamed to `<name> (deprecated)`)
+3. Marks stale labels as deprecated (renamed from `models:*` to `deprecated:models:*`)
 
-To manually delete deprecated labels after review:
-
-```bash
-./scripts/delete_deprecated_model_labels.sh --repo elastic/kibana
-```
+Deprecated labels are kept for historical record — they remain visible on past PRs. The `deprecated:` prefix moves them out of the `models:` autocomplete namespace so they don't clutter label suggestions.
 
 #### CI ops: create/update model + judge labels manually
 
