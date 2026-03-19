@@ -74,7 +74,7 @@ function sanitizeId(value) {
     .replace(/^-|-$/g, '');
 }
 
-/** Catch-all model name returned by /team/info when a team has access to all proxy models. */
+/** Model name returned by /team/info when a team has unrestricted access to all proxy models. */
 const ALL_PROXY_MODELS = 'all-proxy-models';
 
 function unwrapCandidates(payload) {
@@ -289,52 +289,47 @@ async function main() {
   // Primary path: resolve team and fetch models via /team/info.
   // This returns a scoped model list for teams with specific model permissions.
   let modelNames = [];
-
-  if (teamIdArg || teamName) {
-    let teamId = teamIdArg;
-    if (!teamId) {
-      const teams = await fetchTeams(baseUrl, apiKey);
-      const resolved = findTeamIdByName(teams, teamName);
-      if (!resolved) {
-        const known = teams
-          .map((t) =>
-            t && typeof t === 'object' ? t.team_alias ?? t.team_name ?? t.name : undefined
-          )
-          .filter(Boolean)
-          .slice(0, 50);
-        die(
-          `Unable to resolve team id for team name "${teamName}".\n` +
-            `Known team names (first 50): ${known.join(', ') || '(none)'}.`
-        );
-      }
-      teamId = resolved;
-    }
-
-    const teamInfo = await httpJson(
-      `${baseUrl}/team/info?team_id=${encodeURIComponent(String(teamId))}`,
-      apiKey
-    );
-    modelNames = extractModelNames(teamInfo);
-
-    // Fallback: if the team returns a catch-all like "all-proxy-models" instead of
-    // individual model names, discover models via GET /v1/models instead.
-    const isCatchAll =
-      modelNames.length > 0 && modelNames.every((m) => String(m) === ALL_PROXY_MODELS);
-    if (isCatchAll) {
-      process.stderr.write(
-        `Team returned all proxy models (${modelNames.join(
-          ', '
-        )}); falling back to GET /v1/models.\n`
+  let teamId = teamIdArg;
+  if (!teamId) {
+    const teams = await fetchTeams(baseUrl, apiKey);
+    const resolved = findTeamIdByName(teams, teamName);
+    if (!resolved) {
+      const known = teams
+        .map((t) =>
+          t && typeof t === 'object' ? t.team_alias ?? t.team_name ?? t.name : undefined
+        )
+        .filter(Boolean)
+        .slice(0, 50);
+      die(
+        `Unable to resolve team id for team name "${teamName}".\n` +
+          `Known team names (first 50): ${known.join(', ') || '(none)'}.`
       );
-      modelNames = await fetchAvailableModelNames(baseUrl, apiKey, modelPrefix);
     }
-  } else {
-    // No team specified — discover all accessible models directly.
+    teamId = resolved;
+  }
+
+  const teamInfo = await httpJson(
+    `${baseUrl}/team/info?team_id=${encodeURIComponent(String(teamId))}`,
+    apiKey
+  );
+  modelNames = extractModelNames(teamInfo);
+
+  // Fallback: if the team returns a catch-all like "all-proxy-models" instead of
+  // individual model names, discover models via GET /v1/models instead.
+  const isAllProxyModels =
+    modelNames.length > 0 && modelNames.every((m) => String(m) === ALL_PROXY_MODELS);
+
+  if (isAllProxyModels) {
+    process.stderr.write(
+      `Team "${teamName}" returned all proxy models (${modelNames.join(
+        ', '
+      )}) - falling back to GET /v1/models.\n`
+    );
     modelNames = await fetchAvailableModelNames(baseUrl, apiKey, modelPrefix);
   }
 
   if (modelNames.length === 0) {
-    die('No models found. Unable to generate connectors.');
+    die(`No models found for team_id=${teamId}. Unable to generate connectors.`);
   }
 
   const modelInfoMappings = await fetchModelInfoMappings(baseUrl, apiKey);
@@ -358,9 +353,9 @@ async function main() {
     // like `llm-gateway/gpt-5.2-chat`, while internally routing that group to a provider-specific
     // model name (e.g. `gpt-5.2-chat-latest` as shown in the LiteLLM UI).
     //
-    // The /v1/models endpoint returns only the public model names, not the internal provider
-    // mapping. In our CI runs we observed requests for `*-chat` groups being routed to
-    // `*-chat-latest` and then failing with "Unknown model: *-chat-latest".
+    // The team/model listing APIs and /v1/models endpoint return only the public model names,
+    // not the internal provider mapping. In our CI runs we observed requests for `*-chat` groups
+    // being routed to `*-chat-latest` and then failing with "Unknown model: *-chat-latest".
     //
     // Workaround: if a non-`-chat` sibling model exists, prefer it for the actual request model
     // while keeping the connector id stable (so CI-configured EVALUATION_CONNECTOR_ID stays valid).
