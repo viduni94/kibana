@@ -36,7 +36,7 @@ Options:
                                       (as models:judge:<model-group>, e.g. models:judge:llm-gateway/gpt-5.1)
                                       (default: x-pack/platform/packages/shared/kbn-evals/scripts/vault/config.json)
   --judge <connector-id>                Create models:judge:<connector-id> (repeatable)
-  --prune                                Mark stale models:* labels as deprecated (renamed to "<name> (deprecated)")
+  --prune                                Mark stale models:* labels as deprecated (renamed to "deprecated:<name>")
   -h, --help                            Show help
 
 Notes:
