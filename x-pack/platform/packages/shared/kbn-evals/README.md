@@ -178,7 +178,7 @@ Eval suites can be triggered in PR CI by adding GitHub labels:
 
 Evals support optional PR labels for selecting which connector projects to run and (separately) which connector should be used for LLM-as-a-judge evaluators:
 
-- **Model selection**:
+- **Model selection** (required — evals are skipped if no `models:*` label is present):
   - `models:<model-group>` to select one or more model groups
     - LiteLLM model groups typically look like `llm-gateway/<model>`
     - EIS model groups are expressed as `eis/<modelId>` (e.g. `models:eis/gpt-4.1`)

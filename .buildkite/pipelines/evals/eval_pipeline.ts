@@ -185,8 +185,8 @@ export function getEvalPipeline(githubPrLabels: string): string | null {
         const labels = suite.ciLabels?.length ? suite.ciLabels : [`evals:${suite.id}`];
         return labels.some((label) => parsedLabels.includes(label));
       });
-  // Optional model filtering for eval fanout (models:* labels).
-  // - No `models:*` labels => run all models returned by LiteLLM (current behavior).
+  // Model filtering for eval fanout (models:* labels).
+  // - No `models:*` labels => evals are skipped (explicit model selection is required).
   // - One or more `models:<model-group>` labels => only run connectors whose `defaultModel`
   //   matches one of those model groups.
   // - Alias labels (e.g. `models:weekly-eis-models`) expand to their predefined model groups.
@@ -204,7 +204,6 @@ export function getEvalPipeline(githubPrLabels: string): string | null {
     .map((label) => label.slice('models:'.length))
     .map((value) => value.trim())
     .filter(Boolean)
-    .filter((value) => value !== 'all')
     .flatMap((value) => MODEL_GROUP_ALIASES[value] ?? [value]);
 
   const includeEisModels =
@@ -216,9 +215,15 @@ export function getEvalPipeline(githubPrLabels: string): string | null {
     return null;
   }
 
+  // Require explicit model selection — without models:* labels, evals are skipped
+  // to avoid accidentally running against all models (which is expensive).
+  if (selectedModelGroups.length === 0) {
+    return null;
+  }
+
   return buildEvalsYaml({
     selectedSuites: selectedEvalSuites,
-    modelGroups: selectedModelGroups.length > 0 ? selectedModelGroups : undefined,
+    modelGroups: selectedModelGroups,
     evaluationConnectorId,
     includeEisModels,
   });
