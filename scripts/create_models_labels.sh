@@ -236,9 +236,10 @@ generate_litellm_connectors_json_from_vault_config() {
   local litellm_tsv
   litellm_tsv="$(
     node - <<'NODE' "${cfg_path}"
-const Path = require('path');
+const { readFileSync } = require('fs');
+const { resolve } = require('path');
 const cfgPath = process.argv[2];
-const cfg = require(Path.resolve(cfgPath));
+const cfg = JSON.parse(readFileSync(resolve(cfgPath), 'utf8'));
 const litellm = cfg && cfg.litellm ? cfg.litellm : {};
 const baseUrl = litellm.baseUrl || '';
 const teamId = litellm.teamId || '';
