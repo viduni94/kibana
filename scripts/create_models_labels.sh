@@ -66,6 +66,7 @@ declare -a POSITIONAL=()
 CREATED_COUNT=0
 UPDATED_COUNT=0
 DEPRECATED_COUNT=0
+SKIPPED_COUNT=0
 
 if ! command -v gh >/dev/null 2>&1; then
   echo "Error: 'gh' CLI is required." >&2
@@ -187,6 +188,13 @@ create_or_update_label() {
     exit 1
   fi
 
+  # GitHub label names are limited to 50 characters.
+  if [[ "${#name}" -gt 50 ]]; then
+    echo "skipped: $name (${#name} chars exceeds GitHub's 50-char limit)" >&2
+    SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+    return 0
+  fi
+
   # Prefer edit-first so we can update labels idempotently without relying on parsing "already exists" errors.
   if gh label edit "${GH_REPO_ARGS[@]}" "$name" --description "$description" --color "$color" >/dev/null 2>&1; then
     echo "updated: $name"
@@ -202,8 +210,8 @@ create_or_update_label() {
     return 0
   fi
 
-  echo "Error: failed to create or update label: $name" >&2
-  exit 1
+  echo "Warning: failed to create or update label: $name" >&2
+  SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
 }
 
 HAS_INPUTS="false"
@@ -473,5 +481,5 @@ fi
 
 # --- Summary ---
 echo ""
-echo "Summary: created=${CREATED_COUNT} updated=${UPDATED_COUNT} deprecated=${DEPRECATED_COUNT}"
+echo "Summary: created=${CREATED_COUNT} updated=${UPDATED_COUNT} deprecated=${DEPRECATED_COUNT} skipped=${SKIPPED_COUNT}"
 
