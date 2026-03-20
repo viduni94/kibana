@@ -216,13 +216,17 @@ export class EvaluationScoreRepository {
   }
 
   private shouldSetupExportTarget(): boolean {
-    const isExternalCluster = Boolean(
-      process.env.EVALUATIONS_ES_URL || process.env.EVALUATIONS_ES_API_KEY
-    );
-    if (!isExternalCluster) {
+    const esUrl = process.env.EVALUATIONS_ES_URL;
+    if (!esUrl) {
       return true;
     }
-    return process.env.EVALUATIONS_ES_SETUP_INDEX === 'true';
+
+    try {
+      const hostname = new URL(esUrl).hostname.replace(/\.$/, '').toLowerCase();
+      return hostname === 'localhost' || hostname === '127.0.0.1';
+    } catch {
+      return false;
+    }
   }
 
   private async ensureIndexTemplate(): Promise<void> {
