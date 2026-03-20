@@ -72,6 +72,12 @@ const ENV_DOCS = [
     example: 'EVALUATIONS_ES_API_KEY=...',
   },
   {
+    name: 'EVALUATIONS_ES_SETUP_INDEX',
+    description:
+      'When exporting to an external cluster (EVALUATIONS_ES_URL), set to "true" to have the index template and data stream created automatically. By default, external clusters are assumed to be managed (e.g. the golden cluster) and setup is skipped.',
+    example: 'EVALUATIONS_ES_SETUP_INDEX=true',
+  },
+  {
     name: 'KBN_EVALS_SKIP_PREFLIGHT_EXPORT',
     description:
       'Skip the Elasticsearch export preflight check (not recommended for CI). Preflight runs a small sentinel write against the configured evaluations cluster.',
