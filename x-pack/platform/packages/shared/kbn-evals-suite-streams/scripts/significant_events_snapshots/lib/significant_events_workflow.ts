@@ -33,13 +33,39 @@ export async function enableSignificantEvents(
     return;
   }
 
+  const message = (data as Record<string, unknown>)?.message;
+  if (typeof message === 'string' && message.includes('it is overridden')) {
+    log.info('Significant events already enabled via kibana.yml config — skipping');
+    return;
+  }
+
   throw new Error(`Failed to enable significant events: ${status} ${JSON.stringify(data)}`);
+}
+
+export async function configureSigEventsConnector(
+  config: ConnectionConfig,
+  log: ToolingLog,
+  connectorId: string
+): Promise<void> {
+  log.info(`Setting KI extraction connector to "${connectorId}" via sig events settings...`);
+  const { status, data } = await kibanaRequest(
+    config,
+    'PUT',
+    '/internal/streams/_significant_events/settings',
+    { connectorIdKnowledgeIndicatorExtraction: connectorId }
+  );
+
+  if (status >= 200 && status < 300) {
+    log.info('Connector configured successfully');
+    return;
+  }
+
+  throw new Error(`Failed to configure sig events connector: ${status} ${JSON.stringify(data)}`);
 }
 
 export async function triggerSigEventsFeatureExtraction(
   config: ConnectionConfig,
-  log: ToolingLog,
-  connectorId: string
+  log: ToolingLog
 ): Promise<void> {
   log.info('Triggering feature extraction on stream "logs"...');
 
@@ -52,7 +78,6 @@ export async function triggerSigEventsFeatureExtraction(
       action: 'schedule',
       from: new Date(now - 24 * 60 * 60 * 1000).toISOString(),
       to: new Date(now).toISOString(),
-      connector_id: connectorId,
     }
   );
 
@@ -197,6 +222,35 @@ export async function cleanupSigEventsExtractedFeaturesData(
       // do nothing if the index doesn't exist
     }
   }
+}
+
+export async function enableStreams(config: ConnectionConfig, log: ToolingLog): Promise<void> {
+  log.info('Enabling streams...');
+  const { status, data } = await kibanaRequest(config, 'POST', '/api/streams/_enable');
+
+  if (status >= 200 && status < 300) {
+    log.info('Streams enabled');
+  } else {
+    const message = String((data as Record<string, unknown>)?.message ?? '');
+    if (!message.includes('already enabled')) {
+      throw new Error(`Failed to enable streams: ${status} ${JSON.stringify(data)}`);
+    }
+    log.info('Streams already enabled');
+  }
+
+  log.info('Resyncing Elasticsearch assets (templates, pipelines)...');
+  const { status: resyncStatus, data: resyncData } = await kibanaRequest(
+    config,
+    'POST',
+    '/api/streams/_resync'
+  );
+
+  if (resyncStatus >= 200 && resyncStatus < 300) {
+    log.info('Streams resync complete');
+    return;
+  }
+
+  throw new Error(`Failed to resync streams: ${resyncStatus} ${JSON.stringify(resyncData)}`);
 }
 
 export async function disableStreams(config: ConnectionConfig, log: ToolingLog): Promise<void> {

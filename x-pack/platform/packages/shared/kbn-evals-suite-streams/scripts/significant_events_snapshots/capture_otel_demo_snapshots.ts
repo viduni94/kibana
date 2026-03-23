@@ -13,11 +13,11 @@ import { GCS_BUCKET, BASELINE_WAIT_MS, FAILURE_WAIT_MS, SCENARIOS } from './lib/
 import { getConnectionConfig, type ConnectionConfig } from './lib/get_connection_config';
 import { createSnapshot, generateGcsBasePath, registerGcsRepository } from './lib/gcs';
 import { sleep } from './lib/sleep';
-import { ensureLogsIndexTemplate } from '../../src/data_generators/logs_index_template';
 import {
   cleanupSigEventsExtractedFeaturesData,
-  disableStreams,
+  configureSigEventsConnector,
   enableSignificantEvents,
+  enableStreams,
   logSigEventsExtractedFeatures,
   persistSigEventsExtractedFeaturesForSnapshot,
   triggerSigEventsFeatureExtraction,
@@ -178,47 +178,50 @@ async function processScenario(
   log.info(`SCENARIO: ${scenario.id}${scenario.isFailure ? ' (failure)' : ' (baseline)'}`);
   log.info('='.repeat(70));
 
-  // Step 0 — Ensure the `logs` data stream exists so that feature extraction can run.
-  // (Streams' /internal/streams/{name}/features/_task requires a concrete data stream to exist.)
-  await ensureLogsDataStream(esClient, log);
+  // Step 1 — Enable the `logs` ES native stream first so Kibana's enableStreams
+  // detects it and creates the wired definition (without this, enableStreams
+  // skips `logs` as a legacy root when both Kibana def and ES stream are missing).
+  log.info('[1/8] Enabling Streams and significant events...');
+  await enableLogsNativeStream(esClient, log);
+  await enableStreams(config, log);
+  await enableSignificantEvents(config, log);
+  await configureSigEventsConnector(config, log, connectorId);
 
-  // Step 1 — Deploy OTel Demo (this will stream logs into `logs`)
-  log.info('[1/7] Deploying OTel Demo...');
+  // Step 2 — Deploy OTel Demo (data now flows into properly-mapped `logs`)
+  log.info('[2/8] Deploying OTel Demo...');
   const { child, deployedPromise } = deployOtelDemo(log);
 
   try {
-    // Step 2 — Wait for the Otel Demo to finish deploying, then verify pods
-    log.info('[2/7] Waiting for OTel Demo deployment...');
+    // Step 3 — Wait for the Otel Demo to finish deploying, then verify pods
+    log.info('[3/8] Waiting for OTel Demo deployment...');
     await deployedPromise;
-    log.info('[2/7] Verifying that the pods are ready...');
+    log.info('[3/8] Verifying that the pods are ready...');
     await waitForPodsReady(log);
 
-    // Step 3 — Accumulate baseline traffic
-    log.info('[3/7] Accumulating baseline traffic...');
+    // Step 4 — Accumulate baseline traffic
+    log.info('[4/8] Accumulating baseline traffic...');
     await sleep(BASELINE_WAIT_MS, log, 'baseline traffic');
 
-    // Step 4 — Apply failure (if applicable)
+    // Step 5 — Apply failure (if applicable)
     if (scenario.isFailure) {
-      log.info(`[4/7] Applying failure scenario "${scenario.id}"...`);
+      log.info(`[5/8] Applying failure scenario "${scenario.id}"...`);
       await patchScenario(log, scenario.id);
 
-      log.info('[4/7] Accumulating failure data...');
+      log.info('[5/8] Accumulating failure data...');
       await sleep(FAILURE_WAIT_MS, log, 'failure data');
     } else {
-      log.info('[4/7] Skipped (healthy baseline)');
+      log.info('[5/8] Skipped (healthy baseline)');
     }
 
-    // Step 5 — Run feature extraction (the task generates both inferred and computed features)
-    // Extracted features will be stored as part of the snapshot
-    log.info('[5/7] Running feature extraction...');
-    await enableSignificantEvents(config, log);
-    await triggerSigEventsFeatureExtraction(config, log, connectorId);
+    // Step 6 — Run feature extraction (the task generates both inferred and computed features)
+    log.info('[6/8] Running feature extraction...');
+    await triggerSigEventsFeatureExtraction(config, log);
     await waitForSigEventsFeatureExtraction(config, log);
     await logSigEventsExtractedFeatures(config, log);
     await persistSigEventsExtractedFeaturesForSnapshot(config, esClient, log, scenario.id);
 
-    // Step 6 — Create a snapshot of the logs and extracted features
-    log.info('[6/7] Creating GCS snapshot...');
+    // Step 7 — Create a snapshot of the logs and extracted features
+    log.info('[7/8] Creating GCS snapshot...');
     await createSnapshot({ esClient, log, snapshotName: scenario.id, runId });
   } finally {
     // Kill the Otel Demo background process (log streamer)
@@ -227,44 +230,25 @@ async function processScenario(
     }
   }
 
-  // Step 7 — Cleanup (this will clean up the ES data and the Otel Demo)
-  log.info('[7/7] Cleaning up...');
-  await disableStreams(config, log);
+  // Step 8 — Cleanup (delete data and tear down demo, but keep Streams enabled
+  // so the wired templates persist for the next scenario)
+  log.info('[8/8] Cleaning up...');
   await cleanupSigEventsExtractedFeaturesData(esClient, log);
   await teardownOtelDemo(log);
 
   log.info(`Scenario "${scenario.id}" — done`);
 }
 
-async function ensureLogsDataStream(esClient: Client, log: ToolingLog): Promise<void> {
+async function enableLogsNativeStream(esClient: Client, log: ToolingLog): Promise<void> {
   try {
-    await esClient.indices.getDataStream({ name: 'logs' });
-    return;
+    await esClient.transport.request({ method: 'POST', path: '_streams/logs/_enable' });
+    log.info('ES native "logs" stream enabled');
   } catch (err) {
-    const statusCode = (err as { meta?: { statusCode?: number } })?.meta?.statusCode;
-    if (statusCode !== 404) {
-      throw err;
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes('already enabled') || message.includes('resource_already_exists')) {
+      log.info('ES native "logs" stream already enabled');
+      return;
     }
-  }
-
-  log.info('logs data stream not found — creating it for snapshot capture');
-  await ensureLogsIndexTemplate(esClient, log);
-
-  try {
-    await esClient.indices.createDataStream({ name: 'logs' });
-  } catch (err) {
-    // If something already exists at "logs" (e.g. a plain index), try to remove it and retry.
-    log.warning(
-      `Failed to create logs data stream (will attempt cleanup and retry): ${
-        err instanceof Error ? err.message : String(err)
-      }`
-    );
-    try {
-      await esClient.indices.deleteDataStream({ name: 'logs' });
-    } catch {
-      // ignore
-    }
-    await esClient.indices.delete({ index: 'logs', ignore_unavailable: true });
-    await esClient.indices.createDataStream({ name: 'logs' });
+    throw err;
   }
 }
