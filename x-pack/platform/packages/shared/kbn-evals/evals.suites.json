@@ -122,13 +122,8 @@
       "name": "Security Entity Analytics",
       "slackChannel": "#security-entity-analytics-alerts",
       "configPath": "x-pack/solutions/security/packages/kbn-evals-suite-entity-analytics/playwright.config.ts",
-      "tags": [
-        "security",
-        "entity-analytics"
-      ],
-      "ciLabels": [
-        "evals:entity-analytics"
-      ],
+      "tags": ["security", "ai-rules"],
+      "ciLabels": ["evals:security-ai-rules"],
       "serverConfigSet": "evals_entity_analytics"
     },
     {
