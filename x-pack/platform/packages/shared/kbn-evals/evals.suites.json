@@ -29,7 +29,7 @@
     {
       "id": "streams",
       "name": "Streams",
-      "slackChannel": "#significant-events-dev",
+      "slackChannel": "#observability-streams-dev",
       "configPath": "x-pack/platform/packages/shared/kbn-evals-suite-streams/playwright.config.ts",
       "tags": [
         "platform",
@@ -95,8 +95,13 @@
       "name": "Security AI Rules",
       "slackChannel": "#security-detection-engine-alerts",
       "configPath": "x-pack/solutions/security/packages/kbn-evals-suite-security-ai-rules/playwright.config.ts",
-      "tags": ["security", "ai-rules"],
-      "ciLabels": ["evals:security-ai-rules"]
+      "tags": [
+        "security",
+        "ai-rules"
+      ],
+      "ciLabels": [
+        "evals:security-ai-rules"
+      ]
     },
     {
       "id": "endpoint",
