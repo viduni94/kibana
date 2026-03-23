@@ -95,13 +95,8 @@
       "name": "Security AI Rules",
       "slackChannel": "#security-detection-engine-alerts",
       "configPath": "x-pack/solutions/security/packages/kbn-evals-suite-security-ai-rules/playwright.config.ts",
-      "tags": [
-        "security",
-        "ai-rules"
-      ],
-      "ciLabels": [
-        "evals:security-ai-rules"
-      ]
+      "tags": ["security", "ai-rules"],
+      "ciLabels": ["evals:security-ai-rules"]
     },
     {
       "id": "endpoint",
@@ -122,8 +117,13 @@
       "name": "Security Entity Analytics",
       "slackChannel": "#security-entity-analytics-alerts",
       "configPath": "x-pack/solutions/security/packages/kbn-evals-suite-entity-analytics/playwright.config.ts",
-      "tags": ["security", "ai-rules"],
-      "ciLabels": ["evals:security-ai-rules"],
+      "tags": [
+        "security",
+        "entity-analytics"
+      ],
+      "ciLabels": [
+        "evals:entity-analytics"
+      ],
       "serverConfigSet": "evals_entity_analytics"
     },
     {
