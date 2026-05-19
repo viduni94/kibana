@@ -58,7 +58,7 @@ import {
   useDeleteExample,
   useEvalsTraceFetcher,
   useExampleScores,
-  useEvaluationRuns,
+  useEvaluationExperiments,
   useUpdateDataset,
   useUpdateExample,
 } from '../../hooks/use_evals_api';
@@ -108,10 +108,10 @@ export const DatasetDetailPage: React.FC = () => {
 
   const { data: dataset, isLoading: isDatasetLoading, error: datasetError } = useDataset(datasetId);
   const {
-    data: runsData,
-    isLoading: isRunsLoading,
-    error: runsError,
-  } = useEvaluationRuns({
+    data: experimentsData,
+    isLoading: isExperimentsLoading,
+    error: experimentsError,
+  } = useEvaluationExperiments({
     datasetId,
     page: 1,
     perPage: 100,
@@ -365,15 +365,17 @@ export const DatasetDetailPage: React.FC = () => {
     []
   );
 
-  const runsColumns: Array<EuiBasicTableColumn<EvaluationExperimentSummary>> = useMemo(
+  const experimentsColumns: Array<EuiBasicTableColumn<EvaluationExperimentSummary>> = useMemo(
     () => [
       {
         field: 'experiment_id',
-        name: i18n.COLUMN_RUN_ID,
+        name: i18n.COLUMN_EXPERIMENT_ID,
         render: (experimentId: string) => (
           <EuiLink
             onClick={() =>
-              history.push(`/runs/${experimentId}?dataset_id=${encodeURIComponent(datasetId)}`)
+              history.push(
+                `/experiments/${experimentId}?dataset_id=${encodeURIComponent(datasetId)}`
+              )
             }
           >
             {truncate(experimentId, 12)}
@@ -382,22 +384,22 @@ export const DatasetDetailPage: React.FC = () => {
       },
       {
         field: 'timestamp',
-        name: i18n.COLUMN_RUN_TIMESTAMP,
+        name: i18n.COLUMN_EXPERIMENT_TIMESTAMP,
         render: (timestamp: string) => formatDate(timestamp),
       },
       {
         field: 'suite_id',
-        name: i18n.COLUMN_RUN_SUITE,
+        name: i18n.COLUMN_EXPERIMENT_SUITE,
         render: (value?: string) => value ?? '-',
       },
       {
         field: 'task_model',
-        name: i18n.COLUMN_RUN_TASK_MODEL,
+        name: i18n.COLUMN_EXPERIMENT_TASK_MODEL,
         render: (value: EvaluationExperimentSummary['task_model']) => value?.id ?? '-',
       },
       {
         field: 'evaluator_model',
-        name: i18n.COLUMN_RUN_EVALUATOR_MODEL,
+        name: i18n.COLUMN_EXPERIMENT_EVALUATOR_MODEL,
         render: (value: EvaluationExperimentSummary['evaluator_model']) => value?.id ?? '-',
       },
     ],
@@ -416,21 +418,21 @@ export const DatasetDetailPage: React.FC = () => {
     return parts.join(' · ');
   }, [dataset]);
 
-  interface RunScoreRow {
-    runId: string;
+  interface ExperimentScoreRow {
+    experimentId: string;
     timestamp?: string;
     taskModelId?: string;
     scores: EvaluationScoreDocument[];
     traceIds: string[];
   }
 
-  const exampleRunRows = useMemo<RunScoreRow[]>(() => {
-    const groupedRuns = new Map<string, RunScoreRow>();
+  const exampleExperimentRows = useMemo<ExperimentScoreRow[]>(() => {
+    const groupedExperiments = new Map<string, ExperimentScoreRow>();
     for (const score of exampleScoresData?.scores ?? []) {
-      const existing = groupedRuns.get(score.experiment_id);
+      const existing = groupedExperiments.get(score.experiment_id);
       if (!existing) {
-        groupedRuns.set(score.experiment_id, {
-          runId: score.experiment_id,
+        groupedExperiments.set(score.experiment_id, {
+          experimentId: score.experiment_id,
           timestamp: score['@timestamp'],
           taskModelId: score.task.model.id,
           scores: [score],
@@ -451,27 +453,29 @@ export const DatasetDetailPage: React.FC = () => {
       }
     }
 
-    return Array.from(groupedRuns.values()).sort((a, b) => {
+    return Array.from(groupedExperiments.values()).sort((a, b) => {
       if (a.timestamp && b.timestamp) {
         return b.timestamp.localeCompare(a.timestamp);
       }
-      return a.runId.localeCompare(b.runId);
+      return a.experimentId.localeCompare(b.experimentId);
     });
   }, [exampleScoresData?.scores]);
 
-  const exampleRunColumns: Array<EuiBasicTableColumn<RunScoreRow>> = useMemo(
+  const exampleExperimentColumns: Array<EuiBasicTableColumn<ExperimentScoreRow>> = useMemo(
     () => [
       {
-        field: 'runId',
-        name: i18n.COLUMN_EXPERIMENT_RUN_ID,
+        field: 'experimentId',
+        name: i18n.COLUMN_EXPERIMENT_ID,
         width: '180px',
-        render: (runId: string) => (
+        render: (experimentId: string) => (
           <EuiLink
             onClick={() =>
-              history.push(`/runs/${runId}?dataset_id=${encodeURIComponent(datasetId)}`)
+              history.push(
+                `/experiments/${experimentId}?dataset_id=${encodeURIComponent(datasetId)}`
+              )
             }
           >
-            {truncate(runId, 12)}
+            {truncate(experimentId, 12)}
           </EuiLink>
         ),
       },
@@ -620,9 +624,9 @@ export const DatasetDetailPage: React.FC = () => {
         </EuiFlexGroup>
         <EuiSpacer size="l" />
 
-        {runsError ? (
+        {experimentsError ? (
           <EuiText color="danger" size="s">
-            <p>{String(runsError)}</p>
+            <p>{String(experimentsError)}</p>
           </EuiText>
         ) : null}
 
@@ -691,15 +695,15 @@ export const DatasetDetailPage: React.FC = () => {
             <EuiSpacer size="l" />
 
             <EuiTitle size="xs">
-              <h3>{i18n.RUNS_SECTION_TITLE}</h3>
+              <h3>{i18n.EXPERIMENTS_SECTION_TITLE}</h3>
             </EuiTitle>
             <EuiSpacer size="s" />
             <EuiBasicTable<EvaluationExperimentSummary>
-              tableCaption={i18n.RUNS_SECTION_TITLE}
-              items={runsData?.experiments ?? []}
-              columns={runsColumns}
-              loading={isRunsLoading}
-              noItemsMessage={i18n.RUNS_EMPTY_MESSAGE}
+              tableCaption={i18n.EXPERIMENTS_SECTION_TITLE}
+              items={experimentsData?.experiments ?? []}
+              columns={experimentsColumns}
+              loading={isExperimentsLoading}
+              noItemsMessage={i18n.EXPERIMENTS_EMPTY_MESSAGE}
             />
           </>
         ) : null}
@@ -854,10 +858,10 @@ export const DatasetDetailPage: React.FC = () => {
                     <p>{i18n.getExperimentRunsLoadError(String(exampleScoresError))}</p>
                   </EuiText>
                 ) : (
-                  <EuiBasicTable<RunScoreRow>
+                  <EuiBasicTable<ExperimentScoreRow>
                     tableCaption={i18n.FLYOUT_EXPERIMENT_RUNS_SECTION}
-                    items={exampleRunRows}
-                    columns={exampleRunColumns}
+                    items={exampleExperimentRows}
+                    columns={exampleExperimentColumns}
                     loading={isExampleScoresLoading}
                     noItemsMessage={i18n.FLYOUT_NO_EXPERIMENT_RUNS}
                   />

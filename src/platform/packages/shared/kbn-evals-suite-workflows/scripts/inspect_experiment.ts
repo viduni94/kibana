@@ -14,7 +14,7 @@ import { EvaluationIndices } from '@kbn/evals-common';
 const ES_URL = process.env.EVALUATIONS_ES_URL ?? 'http://elastic:changeme@localhost:9220';
 
 interface EvalDoc {
-  run_id: string;
+  experiment_id: string;
   example: {
     id: string;
     index: number;
@@ -48,14 +48,14 @@ interface EvalDoc {
 }
 
 async function main() {
-  const runId = process.argv[2];
+  const experimentId = process.argv[2];
   const mode = process.argv[3] ?? 'summary';
 
   const client = new Client({ node: ES_URL });
 
-  if (!runId || runId === '--help') {
-    await listRecentRuns(client);
-    console.log('\nUsage: npx ts-node scripts/inspect_eval_run.ts <run_id> [mode]');
+  if (!experimentId || experimentId === '--help') {
+    await listRecentExperiments(client);
+    console.log('\nUsage: npx ts-node scripts/inspect_experiment.ts <experiment_id> [mode]');
     console.log('Modes: summary (default), failures, compare, conversations, efficiency');
     await client.close();
     return;
@@ -63,19 +63,19 @@ async function main() {
 
   switch (mode) {
     case 'summary':
-      await showSummary(client, runId);
+      await showSummary(client, experimentId);
       break;
     case 'failures':
-      await showFailures(client, runId);
+      await showFailures(client, experimentId);
       break;
     case 'compare':
-      await showModelComparison(client, runId);
+      await showModelComparison(client, experimentId);
       break;
     case 'conversations':
-      await showConversations(client, runId);
+      await showConversations(client, experimentId);
       break;
     case 'efficiency':
-      await showEfficiency(client, runId);
+      await showEfficiency(client, experimentId);
       break;
     default:
       console.error(`Unknown mode: ${mode}`);
@@ -84,24 +84,24 @@ async function main() {
   await client.close();
 }
 
-async function listRecentRuns(client: Client) {
+async function listRecentExperiments(client: Client) {
   const response = await client.search({
     index: EvaluationIndices.SCORES,
     size: 0,
     aggs: {
-      runs: {
-        terms: { field: 'run_id', size: 10, order: { latest: 'desc' } },
+      experiments: {
+        terms: { field: 'experiment_id', size: 10, order: { latest: 'desc' } },
         aggs: {
           latest: { max: { field: '@timestamp' } },
           models: { terms: { field: 'task.model.id' } },
-          doc_count_agg: { value_count: { field: 'run_id' } },
+          doc_count_agg: { value_count: { field: 'experiment_id' } },
         },
       },
     },
   });
 
-  const buckets = (response.aggregations?.runs as any)?.buckets ?? [];
-  console.log('\n=== Recent Eval Runs ===\n');
+  const buckets = (response.aggregations?.experiments as any)?.buckets ?? [];
+  console.log('\n=== Recent Experiments ===\n');
   for (const bucket of buckets) {
     const models = (bucket.models?.buckets ?? []).map((m: any) => m.key).join(', ');
     const ts = new Date(bucket.latest.value).toISOString();
@@ -109,8 +109,12 @@ async function listRecentRuns(client: Client) {
   }
 }
 
-async function fetchDocs(client: Client, runId: string, extraFilter?: object): Promise<EvalDoc[]> {
-  const must: object[] = [{ term: { run_id: runId } }];
+async function fetchDocs(
+  client: Client,
+  experimentId: string,
+  extraFilter?: object
+): Promise<EvalDoc[]> {
+  const must: object[] = [{ term: { experiment_id: experimentId } }];
   if (extraFilter) {
     must.push(extraFilter);
   }
@@ -129,10 +133,10 @@ async function fetchDocs(client: Client, runId: string, extraFilter?: object): P
   return response.hits.hits.map((h) => h._source!);
 }
 
-async function showSummary(client: Client, runId: string) {
-  const docs = await fetchDocs(client, runId);
+async function showSummary(client: Client, experimentId: string) {
+  const docs = await fetchDocs(client, experimentId);
   if (docs.length === 0) {
-    console.log(`No results for run_id: ${runId}`);
+    console.log(`No results for experiment_id: ${experimentId}`);
     return;
   }
 
@@ -177,17 +181,17 @@ async function showSummary(client: Client, runId: string) {
   }
 }
 
-async function showFailures(client: Client, runId: string) {
-  const docs = await fetchDocs(client, runId, {
+async function showFailures(client: Client, experimentId: string) {
+  const docs = await fetchDocs(client, experimentId, {
     range: { 'evaluator.score': { lt: 1.0 } },
   });
 
   if (docs.length === 0) {
-    console.log(`No failures for run_id: ${runId}`);
+    console.log(`No failures for experiment_id: ${experimentId}`);
     return;
   }
 
-  console.log(`\n=== ${docs.length} Failures in ${runId} ===\n`);
+  console.log(`\n=== ${docs.length} Failures in ${experimentId} ===\n`);
 
   for (const doc of docs) {
     console.log(`--- ${doc.example.dataset.name} [example ${doc.example.index}] ---`);
@@ -221,16 +225,18 @@ async function showFailures(client: Client, runId: string) {
   }
 }
 
-async function showModelComparison(client: Client, runId: string) {
-  const docs = await fetchDocs(client, runId);
+async function showModelComparison(client: Client, experimentId: string) {
+  const docs = await fetchDocs(client, experimentId);
   const byModel = groupBy(docs, (d) => d.task.model.id);
   const modelIds = Object.keys(byModel);
 
   if (modelIds.length < 2) {
-    console.log(`Only ${modelIds.length} model(s) found. Compare needs 2+ models in the same run.`);
+    console.log(
+      `Only ${modelIds.length} model(s) found. Compare needs 2+ models in the same experiment.`
+    );
     console.log('Models found:', modelIds.join(', '));
     console.log(
-      '\nTo compare across runs, query two run_ids separately and use the "failures" mode.'
+      '\nTo compare across experiments, query two experiment_ids separately and use the "failures" mode.'
     );
     return;
   }
@@ -276,12 +282,12 @@ async function showModelComparison(client: Client, runId: string) {
   }
 }
 
-async function showConversations(client: Client, runId: string) {
-  const docs = await fetchDocs(client, runId, {
+async function showConversations(client: Client, experimentId: string) {
+  const docs = await fetchDocs(client, experimentId, {
     term: { 'evaluator.name': 'Criteria' },
   });
 
-  console.log(`\n=== Conversations for ${runId} ===\n`);
+  console.log(`\n=== Conversations for ${experimentId} ===\n`);
 
   for (const doc of docs) {
     console.log(`--- ${doc.example.dataset.name} [example ${doc.example.index}] ---`);
@@ -322,20 +328,20 @@ async function showConversations(client: Client, runId: string) {
   }
 }
 
-async function showEfficiency(client: Client, runId: string) {
-  const efficiencyDocs = await fetchDocs(client, runId, {
+async function showEfficiency(client: Client, experimentId: string) {
+  const efficiencyDocs = await fetchDocs(client, experimentId, {
     term: { 'evaluator.name': 'Efficiency' },
   });
-  const trajectoryDocs = await fetchDocs(client, runId, {
+  const trajectoryDocs = await fetchDocs(client, experimentId, {
     term: { 'evaluator.name': 'trajectory' },
   });
 
   if (efficiencyDocs.length === 0) {
-    console.log(`No Efficiency results for run_id: ${runId}`);
+    console.log(`No Efficiency results for experiment_id: ${experimentId}`);
     return;
   }
 
-  console.log(`\n=== Efficiency Breakdown for ${runId} ===\n`);
+  console.log(`\n=== Efficiency Breakdown for ${experimentId} ===\n`);
 
   const byDataset = groupBy(efficiencyDocs, (d) => d.example.dataset.name);
   const trajectoryByKey = new Map(

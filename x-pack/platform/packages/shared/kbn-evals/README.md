@@ -132,7 +132,7 @@ Both commands prompt interactively when flags are omitted (suite, connector, mod
 
 #### Profiles: golden datasets + local export (recommended for UI iteration)
 
-For iterating on the Evals UI (runs list / run detail pages), it’s often useful to:
+For iterating on the Evals UI (experiments list / experiment detail pages), it’s often useful to:
 
 - **Read datasets from the golden cluster** (shared, curated datasets)
 - **Write results + traces to your local Elasticsearch/Kibana** (`http://localhost:9200` / `http://localhost:5601`)
@@ -197,7 +197,7 @@ node scripts/evals scout                 # Start Scout with evals config (standa
 node scripts/evals run [--suite <id>]    # Run an eval suite (stack must be running)
 node scripts/evals list [--refresh]      # List eval suites
 node scripts/evals doctor                # Check prerequisites, offer auto-fixes
-node scripts/evals compare <a> <b>       # Compare two eval runs
+node scripts/evals compare <a> <b>       # Compare two experiments
 node scripts/evals env                   # List environment variables
 node scripts/evals ci-map [--json]       # Output CI label mapping
 ```
@@ -662,7 +662,7 @@ If you want to store evaluation results in a different Kibana environment than y
 EVALUATIONS_KBN_URL=http://elastic:changeme@localhost:5601 node scripts/playwright test --config x-pack/platform/packages/shared/<my-dir-name>/playwright.config.ts
 ```
 
-Score ingestion and score reads are routed through the evals plugin on that target Kibana (`POST /internal/evals/scores` and run read routes), while `esClient` continues to use your test environment cluster.
+Score ingestion and score reads are routed through the evals plugin on that target Kibana (`POST /internal/evals/scores` and experiment read routes), while `esClient` continues to use your test environment cluster.
 
 #### Using Separate Clusters and Kibana
 
@@ -699,24 +699,24 @@ import { evaluate as base, type EvalsClient, type EvaluationScoreDocument } from
 export const evaluate = base.extend({
   reportModelScore: async ({}, use) => {
     // Custom reporter implementation
-    await use(async (evalsClient: EvalsClient, runId, log) => {
+    await use(async (evalsClient: EvalsClient, experimentId, log) => {
       // Fetch persisted scores through the evals plugin APIs
-      const docs = await evalsClient.getRunScores(runId);
+      const docs = await evalsClient.getExperimentScores(experimentId);
 
       if (docs.length === 0) {
-        log.error(`No results found for run: ${runId}`);
+        log.error(`No results found for experiment: ${experimentId}`);
         return;
       }
 
       // Build your custom report
       log.info('=== CUSTOM REPORT ===');
       log.info(`Model: ${docs[0].model.id}`);
-      log.info(`Run ID: ${runId}`);
+      log.info(`Experiment ID: ${experimentId}`);
       log.info(`Total evaluations: ${docs.length}`);
 
       // Group by dataset, calculate aggregates, write to file, etc.
       const datasetResults = groupByDataset(docs);
-      writeToFile(`report-${runId}.json`, datasetResults);
+      writeToFile(`report-${experimentId}.json`, datasetResults);
     });
   },
 });
@@ -789,7 +789,6 @@ The evaluation data is stored with the following structure:
   ```json
   {
     "@timestamp": "2025-08-28T14:21:35.886Z",
-    "run_id": "run_123",
     "experiment_id": "exp_456",
     "suite": {
       "id": "my-suite"
@@ -838,7 +837,7 @@ The evaluation data is stored with the following structure:
         "provider": "anthropic"
       }
     },
-    "run_metadata": {
+    "experiment_metadata": {
       "git_branch": "main",
       "git_commit_sha": "abc123",
       "total_repetitions": 1
@@ -849,14 +848,14 @@ The evaluation data is stored with the following structure:
   }
   ```
 
-Each document represents a single evaluator score for a single example (and repetition) within a `run_id`.
+Each document represents a single evaluator score for a single example (and repetition) within an `experiment_id`.
 
 ### Querying Evaluation Data
 
 After running evaluations, you can query the results in Kibana using the query filter provided in the logs:
 
 ```kql
-environment.hostname:"your-hostname" AND task.model.id:"model-id" AND run_id:"run-id"
+environment.hostname:"your-hostname" AND task.model.id:"model-id" AND experiment_id:"experiment-id"
 ```
 
 ### Using the Evaluation Analysis Service

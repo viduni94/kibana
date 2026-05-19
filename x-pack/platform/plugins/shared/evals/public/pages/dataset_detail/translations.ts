@@ -32,9 +32,12 @@ export const EXAMPLES_SECTION_TITLE = i18n.translate(
   }
 );
 
-export const RUNS_SECTION_TITLE = i18n.translate('xpack.evals.datasetDetail.runsSectionTitle', {
-  defaultMessage: 'Runs',
-});
+export const EXPERIMENTS_SECTION_TITLE = i18n.translate(
+  'xpack.evals.datasetDetail.experimentsSectionTitle',
+  {
+    defaultMessage: 'Experiments',
+  }
+);
 
 export const METADATA_DESCRIPTION_LABEL = i18n.translate(
   'xpack.evals.datasetDetail.metadataDescriptionLabel',
@@ -89,30 +92,22 @@ export const COLUMN_ACTIONS = i18n.translate('xpack.evals.datasetDetail.columns.
   defaultMessage: 'Actions',
 });
 
-export const COLUMN_RUN_ID = i18n.translate('xpack.evals.datasetDetail.runsColumns.runId', {
-  defaultMessage: 'Run ID',
-});
-
-export const COLUMN_RUN_TIMESTAMP = i18n.translate(
-  'xpack.evals.datasetDetail.runsColumns.timestamp',
+export const COLUMN_EXPERIMENT_ID = i18n.translate(
+  'xpack.evals.datasetDetail.experimentsColumns.experimentId',
   {
-    defaultMessage: 'Timestamp',
+    defaultMessage: 'Experiment ID',
   }
 );
 
-export const COLUMN_RUN_SUITE = i18n.translate('xpack.evals.datasetDetail.runsColumns.suite', {
-  defaultMessage: 'Suite',
-});
-
-export const COLUMN_RUN_TASK_MODEL = i18n.translate(
-  'xpack.evals.datasetDetail.runsColumns.taskModel',
+export const COLUMN_EXPERIMENT_SUITE = i18n.translate(
+  'xpack.evals.datasetDetail.experimentsColumns.suite',
   {
-    defaultMessage: 'Task model',
+    defaultMessage: 'Suite',
   }
 );
 
-export const COLUMN_RUN_EVALUATOR_MODEL = i18n.translate(
-  'xpack.evals.datasetDetail.runsColumns.evaluatorModel',
+export const COLUMN_EXPERIMENT_EVALUATOR_MODEL = i18n.translate(
+  'xpack.evals.datasetDetail.experimentsColumns.evaluatorModel',
   {
     defaultMessage: 'Evaluator model',
   }
@@ -202,9 +197,12 @@ export const EXAMPLES_EMPTY_MESSAGE = i18n.translate(
   }
 );
 
-export const RUNS_EMPTY_MESSAGE = i18n.translate('xpack.evals.datasetDetail.runsEmptyMessage', {
-  defaultMessage: 'No runs found for this dataset.',
-});
+export const EXPERIMENTS_EMPTY_MESSAGE = i18n.translate(
+  'xpack.evals.datasetDetail.experimentsEmptyMessage',
+  {
+    defaultMessage: 'No experiments found for this dataset.',
+  }
+);
 
 export const DATASET_NOT_FOUND_TITLE = i18n.translate(
   'xpack.evals.datasetDetail.datasetNotFoundTitle',
@@ -288,22 +286,15 @@ export const FLYOUT_NO_EXPERIMENT_RUNS = i18n.translate(
   }
 );
 
-export const COLUMN_EXPERIMENT_RUN_ID = i18n.translate(
-  'xpack.evals.datasetDetail.experimentRunsColumns.runId',
-  {
-    defaultMessage: 'Run ID',
-  }
-);
-
 export const COLUMN_EXPERIMENT_TIMESTAMP = i18n.translate(
-  'xpack.evals.datasetDetail.experimentRunsColumns.timestamp',
+  'xpack.evals.datasetDetail.experimentsColumns.timestamp',
   {
     defaultMessage: 'Timestamp',
   }
 );
 
 export const COLUMN_EXPERIMENT_TASK_MODEL = i18n.translate(
-  'xpack.evals.datasetDetail.experimentRunsColumns.taskModel',
+  'xpack.evals.datasetDetail.experimentsColumns.taskModel',
   {
     defaultMessage: 'Task model',
   }

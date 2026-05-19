@@ -63,7 +63,7 @@ export interface GetEvalsRemotesResponse {
   remotes: EvalsRemoteSummary[];
 }
 
-interface RunsListFilters {
+interface ExperimentsListFilters {
   suiteId?: string;
   modelId?: string;
   branch?: string;
@@ -376,11 +376,11 @@ export const useDeleteRemote = () => {
   });
 };
 
-export const useEvaluationRuns = (filters: RunsListFilters = {}) => {
+export const useEvaluationExperiments = (filters: ExperimentsListFilters = {}) => {
   const { services } = useKibana();
 
   return useQuery({
-    queryKey: queryKeys.runs.list(filters),
+    queryKey: queryKeys.experiments.list(filters),
     queryFn: async (): Promise<GetEvaluationExperimentsResponse> => {
       const query: Record<string, string | number> = {};
       if (filters.suiteId) query.suite_id = filters.suiteId;
@@ -405,18 +405,18 @@ export const useEvaluationRuns = (filters: RunsListFilters = {}) => {
   });
 };
 
-export const useEvaluationRun = (runId: string) => {
+export const useEvaluationExperiment = (experimentId: string) => {
   const { services } = useKibana();
 
   return useQuery({
-    queryKey: queryKeys.runs.detail(runId),
+    queryKey: queryKeys.experiments.detail(experimentId),
     queryFn: async (): Promise<GetEvaluationExperimentResponse> => {
-      const url = EVALS_EXPERIMENT_URL.replace('{experimentId}', encodeURIComponent(runId));
+      const url = EVALS_EXPERIMENT_URL.replace('{experimentId}', encodeURIComponent(experimentId));
       return services.http!.get<GetEvaluationExperimentResponse>(url, {
         version: API_VERSIONS.internal.v1,
       });
     },
-    enabled: runId.length > 0,
+    enabled: experimentId.length > 0,
     retry: (_failureCount, error) => {
       if (isHttpFetchError(error)) {
         return !error.response?.status || error.response.status >= 500;
@@ -427,13 +427,16 @@ export const useEvaluationRun = (runId: string) => {
   });
 };
 
-export const useEvaluationRunScores = (runId: string) => {
+export const useEvaluationExperimentScores = (experimentId: string) => {
   const { services } = useKibana();
 
   return useQuery({
-    queryKey: queryKeys.runs.scores(runId),
+    queryKey: queryKeys.experiments.scores(experimentId),
     queryFn: async (): Promise<GetEvaluationExperimentScoresResponse> => {
-      const url = EVALS_EXPERIMENT_SCORES_URL.replace('{experimentId}', encodeURIComponent(runId));
+      const url = EVALS_EXPERIMENT_SCORES_URL.replace(
+        '{experimentId}',
+        encodeURIComponent(experimentId)
+      );
       return services.http!.get<GetEvaluationExperimentScoresResponse>(url, {
         version: API_VERSIONS.internal.v1,
       });
@@ -441,18 +444,18 @@ export const useEvaluationRunScores = (runId: string) => {
   });
 };
 
-export const useCompareRuns = (runIdA: string, runIdB: string) => {
+export const useCompareExperiments = (experimentIdA: string, experimentIdB: string) => {
   const { services } = useKibana();
 
   return useQuery({
-    queryKey: queryKeys.runs.compare(runIdA, runIdB),
+    queryKey: queryKeys.experiments.compare(experimentIdA, experimentIdB),
     queryFn: async (): Promise<CompareExperimentsResponse> => {
       return services.http!.get<CompareExperimentsResponse>(EVALS_EXPERIMENTS_COMPARE_URL, {
-        query: { experiment_id_a: runIdA, experiment_id_b: runIdB },
+        query: { experiment_id_a: experimentIdA, experiment_id_b: experimentIdB },
         version: API_VERSIONS.internal.v1,
       });
     },
-    enabled: runIdA.length > 0 && runIdB.length > 0,
+    enabled: experimentIdA.length > 0 && experimentIdB.length > 0,
     retry: (_failureCount, error) => {
       if (isHttpFetchError(error)) {
         return !error.response?.status || error.response.status >= 500;
@@ -463,21 +466,21 @@ export const useCompareRuns = (runIdA: string, runIdB: string) => {
   });
 };
 
-export const useRunDatasetExamples = (runId: string, datasetId: string) => {
+export const useExperimentDatasetExamples = (experimentId: string, datasetId: string) => {
   const { services } = useKibana();
 
   return useQuery({
-    queryKey: queryKeys.runs.datasetExamples(runId, datasetId),
+    queryKey: queryKeys.experiments.datasetExamples(experimentId, datasetId),
     queryFn: async (): Promise<GetEvaluationExperimentDatasetExamplesResponse> => {
       const url = EVALS_EXPERIMENT_DATASET_EXAMPLES_URL.replace(
         '{experimentId}',
-        encodeURIComponent(runId)
+        encodeURIComponent(experimentId)
       ).replace('{datasetId}', encodeURIComponent(datasetId));
       return services.http!.get<GetEvaluationExperimentDatasetExamplesResponse>(url, {
         version: API_VERSIONS.internal.v1,
       });
     },
-    enabled: runId.length > 0 && datasetId.length > 0,
+    enabled: experimentId.length > 0 && datasetId.length > 0,
   });
 };
 

@@ -34,9 +34,9 @@ import { isHttpFetchError } from '@kbn/core-http-browser';
 import type { EvaluatorStats } from '@kbn/evals-common';
 import { TraceWaterfall, useTraceSpans } from '@kbn/llm-trace-waterfall';
 import {
-  useEvaluationRun,
+  useEvaluationExperiment,
   useEvalsTraceFetcher,
-  useRunDatasetExamples,
+  useExperimentDatasetExamples,
 } from '../../hooks/use_evals_api';
 import { ExampleScoresTable } from '../../components/example_scores_table';
 import { resolvePrUrl } from '../../utils/pr_url';
@@ -49,11 +49,11 @@ interface DatasetStatsGroup {
 }
 
 interface DatasetStatsAccordionProps {
-  runId: string;
+  experimentId: string;
   group: DatasetStatsGroup;
   totalRepetitions: number;
   statsColumns: Array<EuiBasicTableColumn<EvaluatorStats>>;
-  runLoading: boolean;
+  experimentLoading: boolean;
   isOpen: boolean;
   selectedExampleId?: string | null;
   onTraceClick: (traceId: string, exampleId: string) => void;
@@ -63,11 +63,11 @@ interface DatasetStatsAccordionProps {
 }
 
 const DatasetStatsAccordion: React.FC<DatasetStatsAccordionProps> = ({
-  runId,
+  experimentId,
   group,
   totalRepetitions,
   statsColumns,
-  runLoading,
+  experimentLoading,
   isOpen,
   selectedExampleId,
   onTraceClick,
@@ -79,7 +79,7 @@ const DatasetStatsAccordion: React.FC<DatasetStatsAccordionProps> = ({
     data: datasetExamples,
     isLoading: examplesLoading,
     error: examplesError,
-  } = useRunDatasetExamples(runId, isOpen ? group.datasetId : '');
+  } = useExperimentDatasetExamples(experimentId, isOpen ? group.datasetId : '');
 
   const scoreCount = group.stats[0]?.stats.count;
   const exampleCount = scoreCount != null ? Math.round(scoreCount / totalRepetitions) : undefined;
@@ -87,7 +87,7 @@ const DatasetStatsAccordion: React.FC<DatasetStatsAccordionProps> = ({
   return (
     <>
       <EuiAccordion
-        id={`runDatasetAccordion-${group.datasetId}`}
+        id={`experimentDatasetAccordion-${group.datasetId}`}
         buttonContent={
           <EuiFlexGroup gutterSize="s" alignItems="center" responsive={false}>
             <EuiFlexItem grow={false}>
@@ -145,7 +145,7 @@ const DatasetStatsAccordion: React.FC<DatasetStatsAccordionProps> = ({
           tableCaption={i18n.SECTION_EVALUATOR_STATS}
           items={group.stats}
           columns={statsColumns}
-          loading={runLoading || (isOpen && examplesLoading)}
+          loading={experimentLoading || (isOpen && examplesLoading)}
         />
       </EuiAccordion>
       <EuiSpacer size="l" />
@@ -153,12 +153,16 @@ const DatasetStatsAccordion: React.FC<DatasetStatsAccordionProps> = ({
   );
 };
 
-export const RunDetailPage: React.FC = () => {
-  const { runId } = useParams<{ runId: string }>();
+export const ExperimentDetailPage: React.FC = () => {
+  const { experimentId } = useParams<{ experimentId: string }>();
   const history = useHistory();
   const location = useLocation();
   const { euiTheme } = useEuiTheme();
-  const { data: runDetail, isLoading: runLoading, error: runError } = useEvaluationRun(runId);
+  const {
+    data: experimentDetail,
+    isLoading: experimentLoading,
+    error: experimentError,
+  } = useEvaluationExperiment(experimentId);
 
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const openDatasetId = searchParams.get('dataset_id');
@@ -172,9 +176,9 @@ export const RunDetailPage: React.FC = () => {
     error: traceError,
   } = useTraceSpans(selectedTraceId, { fetchTrace });
   const prUrl = useMemo(() => {
-    const pr = runDetail?.ci?.pull_request;
+    const pr = experimentDetail?.ci?.pull_request;
     return pr ? resolvePrUrl(pr) : null;
-  }, [runDetail?.ci?.pull_request]);
+  }, [experimentDetail?.ci?.pull_request]);
 
   const updateSearchParams = useCallback(
     (updater: (params: URLSearchParams) => void) => {
@@ -239,7 +243,7 @@ export const RunDetailPage: React.FC = () => {
       { datasetId: string; datasetName: string; stats: EvaluatorStats[] }
     >();
 
-    for (const stat of runDetail?.stats ?? []) {
+    for (const stat of experimentDetail?.stats ?? []) {
       const existingGroup = groupedStats.get(stat.dataset_id);
       if (existingGroup) {
         existingGroup.stats.push(stat);
@@ -256,7 +260,7 @@ export const RunDetailPage: React.FC = () => {
     return Array.from(groupedStats.values()).sort((a, b) =>
       a.datasetName.localeCompare(b.datasetName)
     );
-  }, [runDetail?.stats]);
+  }, [experimentDetail?.stats]);
 
   const statsColumns: Array<EuiBasicTableColumn<EvaluatorStats>> = useMemo(
     () => [
@@ -300,7 +304,7 @@ export const RunDetailPage: React.FC = () => {
     []
   );
 
-  if (runLoading) {
+  if (experimentLoading) {
     return (
       <EuiPageSection paddingSize="none" css={{ paddingTop: euiTheme.size.l }}>
         <EuiLoadingSpinner size="xl" />
@@ -308,22 +312,29 @@ export const RunDetailPage: React.FC = () => {
     );
   }
 
-  if (runError) {
-    const isNotFound = isHttpFetchError(runError) && runError.response?.status === 404;
+  if (experimentError) {
+    const isNotFound =
+      isHttpFetchError(experimentError) && experimentError.response?.status === 404;
     return (
       <EuiPageSection paddingSize="none" css={{ paddingTop: euiTheme.size.l }}>
         <EuiEmptyPrompt
           color={isNotFound ? 'subdued' : 'danger'}
           iconType={isNotFound ? 'search' : 'warning'}
-          title={<h2>{isNotFound ? i18n.RUN_NOT_FOUND_TITLE : i18n.RUN_LOAD_ERROR_TITLE}</h2>}
+          title={
+            <h2>
+              {isNotFound ? i18n.EXPERIMENT_NOT_FOUND_TITLE : i18n.EXPERIMENT_LOAD_ERROR_TITLE}
+            </h2>
+          }
           body={
             <p>
               {isNotFound
-                ? i18n.getRunNotFoundBody(runId)
-                : i18n.getRunLoadErrorBody(String(runError))}
+                ? i18n.getExperimentNotFoundBody(experimentId)
+                : i18n.getExperimentLoadErrorBody(String(experimentError))}
             </p>
           }
-          actions={[<EuiButton onClick={() => history.push('/')}>{i18n.BACK_TO_RUNS}</EuiButton>]}
+          actions={[
+            <EuiButton onClick={() => history.push('/')}>{i18n.BACK_TO_EXPERIMENTS}</EuiButton>,
+          ]}
         />
       </EuiPageSection>
     );
@@ -333,17 +344,17 @@ export const RunDetailPage: React.FC = () => {
     <>
       <EuiPageSection paddingSize="none" css={{ paddingTop: euiTheme.size.l }}>
         <EuiTitle size="l">
-          <h2>{i18n.getPageTitle(runId)}</h2>
+          <h2>{i18n.getPageTitle(experimentId)}</h2>
         </EuiTitle>
         <EuiSpacer size="l" />
 
-        {runDetail && (
+        {experimentDetail && (
           <>
             <EuiFlexGroup wrap>
               <EuiFlexItem>
                 <EuiPanel hasShadow={false} hasBorder>
                   <EuiStat
-                    title={runDetail.task_model?.id ?? '-'}
+                    title={experimentDetail.task_model?.id ?? '-'}
                     description={i18n.STAT_TASK_MODEL}
                     titleSize="xs"
                   />
@@ -352,7 +363,7 @@ export const RunDetailPage: React.FC = () => {
               <EuiFlexItem>
                 <EuiPanel hasShadow={false} hasBorder>
                   <EuiStat
-                    title={runDetail.evaluator_model?.id ?? '-'}
+                    title={experimentDetail.evaluator_model?.id ?? '-'}
                     description={i18n.STAT_EVALUATOR_MODEL}
                     titleSize="xs"
                   />
@@ -361,7 +372,7 @@ export const RunDetailPage: React.FC = () => {
               <EuiFlexItem>
                 <EuiPanel hasShadow={false} hasBorder>
                   <EuiStat
-                    title={String(runDetail.total_repetitions ?? '-')}
+                    title={String(experimentDetail.total_repetitions ?? '-')}
                     description={i18n.STAT_REPETITIONS}
                     titleSize="xs"
                   />
@@ -371,8 +382,8 @@ export const RunDetailPage: React.FC = () => {
                 <EuiPanel hasShadow={false} hasBorder>
                   <EuiStat
                     title={
-                      runDetail.git_branch ? (
-                        <EuiBadge color="hollow">{runDetail.git_branch}</EuiBadge>
+                      experimentDetail.git_branch ? (
+                        <EuiBadge color="hollow">{experimentDetail.git_branch}</EuiBadge>
                       ) : (
                         '-'
                       )
@@ -386,8 +397,8 @@ export const RunDetailPage: React.FC = () => {
                 <EuiPanel hasShadow={false} hasBorder>
                   <EuiStat
                     title={
-                      runDetail.ci?.build_url ? (
-                        <EuiLink href={runDetail.ci.build_url} target="_blank" external>
+                      experimentDetail.ci?.build_url ? (
+                        <EuiLink href={experimentDetail.ci.build_url} target="_blank" external>
                           {i18n.CI_BUILD_LINK}
                         </EuiLink>
                       ) : (
@@ -428,11 +439,11 @@ export const RunDetailPage: React.FC = () => {
         {datasetStatsGroups.map(({ datasetId, datasetName, stats }) => (
           <DatasetStatsAccordion
             key={datasetId}
-            runId={runId}
+            experimentId={experimentId}
             group={{ datasetId, datasetName, stats }}
-            totalRepetitions={runDetail?.total_repetitions ?? 1}
+            totalRepetitions={experimentDetail?.total_repetitions ?? 1}
             statsColumns={statsColumns}
-            runLoading={runLoading}
+            experimentLoading={experimentLoading}
             isOpen={openDatasetId === datasetId}
             selectedExampleId={openDatasetId === datasetId ? selectedExampleId : null}
             onTraceClick={(traceId, exampleId) => setSelectedTrace(traceId, exampleId)}

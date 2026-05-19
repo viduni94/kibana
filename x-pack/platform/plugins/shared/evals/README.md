@@ -1,6 +1,6 @@
 # Evals plugin
 
-The **Evals plugin** provides an in-Kibana UI for browsing LLM evaluation run results, per-evaluator statistics, and OpenTelemetry traces produced by the `@kbn/evals` evaluation framework.
+The **Evals plugin** provides an in-Kibana UI for browsing LLM evaluation experiment results, per-evaluator statistics, and OpenTelemetry traces produced by the `@kbn/evals` evaluation framework.
 
 ## Architecture
 
@@ -22,16 +22,17 @@ The evaluation system spans three packages:
 ┌──────────────────────────────────────────────────────────────┐
 │  @kbn/evals-common                                           │
 │  - OpenAPI schemas (Zod)                                     │
-│  - ES query builders (buildRunFilterQuery, etc.)             │
+│  - ES query builders (buildExperimentFilterQuery, etc.)      │
 │  - constants (URLs, index patterns, API versions)            │
 └──────────────────┬───────────────────────────────────────────┘
                    │ imports shared query builders & types
                    ▼
 ┌──────────────────────────────────────────────────────────────┐
 │  evals plugin  (this package)                                │
-│  - server: 4 internal API routes (runs, run detail,          │
-│    scores, traces)                                           │
-│  - public: React UI (runs list, run detail, trace waterfall) │
+│  - server: 4 internal API routes (experiments, experiment    │
+│    detail, scores, traces)                                   │
+│  - public: React UI (experiments list, experiment detail,    │
+│    trace waterfall)                                          │
 │  - exposes TraceWaterfall component for use by other plugins │
 └──────────────────────────────────────────────────────────────┘
 ```
@@ -85,17 +86,17 @@ All routes are internal, versioned (`v1`), and require the `evals` privilege.
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/internal/evals/runs` | List evaluation runs with summary metadata (paginated, filterable by suite, model, branch) |
-| `GET` | `/internal/evals/runs/{runId}` | Get run detail with per-evaluator, per-dataset statistics |
-| `GET` | `/internal/evals/runs/{runId}/scores` | Get individual score documents for a run |
+| `GET` | `/internal/evals/experiments` | List evaluation experiments with summary metadata (paginated, filterable by suite, model, branch) |
+| `GET` | `/internal/evals/experiments/{experimentId}` | Get experiment detail with per-evaluator, per-dataset statistics |
+| `GET` | `/internal/evals/experiments/{experimentId}/scores` | Get individual score documents for an experiment |
 | `GET` | `/internal/evals/traces/{traceId}` | Get trace spans for a given trace ID |
 
 ## UI pages
 
 | Page | Route | Description |
 |---|---|---|
-| Runs list | `/app/evals` | Paginated table of evaluation runs with branch filter, model badges, CI links |
-| Run detail | `/app/evals/runs/:runId` | Run metadata, evaluator statistics table, trace links, trace waterfall flyout |
+| Experiments list | `/app/evals` | Paginated table of evaluation experiments with branch filter, model badges, CI links |
+| Experiment detail | `/app/evals/experiments/:experimentId` | Experiment metadata, evaluator statistics table, trace links, trace waterfall flyout |
 
 The `TraceWaterfall` component is also exported from the plugin's public start contract for use by other plugins:
 

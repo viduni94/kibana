@@ -35,10 +35,10 @@ import { useHistory, useLocation } from 'react-router-dom';
 import { TraceWaterfall, useTraceSpans } from '@kbn/llm-trace-waterfall';
 import type { PairedTTestResult } from '@kbn/evals-common';
 import {
-  useCompareRuns,
+  useCompareExperiments,
   useEvalsTraceFetcher,
-  useEvaluationRun,
-  useRunDatasetExamples,
+  useEvaluationExperiment,
+  useExperimentDatasetExamples,
 } from '../../hooks/use_evals_api';
 import * as i18n from './translations';
 
@@ -133,18 +133,18 @@ const DiffValue: React.FC<{ diff: number; evaluatorName: string }> = ({ diff, ev
   );
 };
 
-const RunHeader: React.FC<{
+const ExperimentHeader: React.FC<{
   label: string;
-  runId: string;
+  experimentId: string;
   isNewer?: boolean;
-}> = ({ label, runId, isNewer }) => {
+}> = ({ label, experimentId, isNewer }) => {
   const history = useHistory();
-  const { data: runData, isLoading } = useEvaluationRun(runId);
+  const { data: experimentData, isLoading } = useEvaluationExperiment(experimentId);
 
-  const branch = runData?.git_branch;
-  const timestamp = runData?.timestamp;
-  const taskModel = runData?.task_model?.id;
-  const evaluatorModel = runData?.evaluator_model?.id;
+  const branch = experimentData?.git_branch;
+  const timestamp = experimentData?.timestamp;
+  const taskModel = experimentData?.task_model?.id;
+  const evaluatorModel = experimentData?.evaluator_model?.id;
 
   return (
     <EuiPanel hasShadow={false} hasBorder paddingSize="m">
@@ -169,9 +169,11 @@ const RunHeader: React.FC<{
       <EuiSpacer size="xs" />
       <EuiFlexGroup alignItems="center" gutterSize="s" responsive={false} wrap>
         <EuiFlexItem grow={false}>
-          <EuiToolTip content={i18n.VIEW_RUN_DETAIL}>
-            <EuiLink onClick={() => history.push(`/runs/${encodeURIComponent(runId)}`)}>
-              {runId}
+          <EuiToolTip content={i18n.VIEW_EXPERIMENT_DETAIL}>
+            <EuiLink
+              onClick={() => history.push(`/experiments/${encodeURIComponent(experimentId)}`)}
+            >
+              {experimentId}
             </EuiLink>
           </EuiToolTip>
         </EuiFlexItem>
@@ -232,13 +234,13 @@ const RunHeader: React.FC<{
 };
 
 const ExampleDrilldownFlyout: React.FC<{
-  runIdA: string;
-  runIdB: string;
+  experimentIdA: string;
+  experimentIdB: string;
   datasetId: string;
   datasetName: string;
   evaluatorName: string;
   onClose: () => void;
-}> = ({ runIdA, runIdB, datasetId, datasetName, evaluatorName, onClose }) => {
+}> = ({ experimentIdA, experimentIdB, datasetId, datasetName, evaluatorName, onClose }) => {
   const { euiTheme } = useEuiTheme();
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
   const fetchTrace = useEvalsTraceFetcher();
@@ -248,8 +250,14 @@ const ExampleDrilldownFlyout: React.FC<{
     isLoading: traceLoading,
     error: traceError,
   } = useTraceSpans(selectedTraceId, { fetchTrace });
-  const { data: examplesA, isLoading: loadingA } = useRunDatasetExamples(runIdA, datasetId);
-  const { data: examplesB, isLoading: loadingB } = useRunDatasetExamples(runIdB, datasetId);
+  const { data: examplesA, isLoading: loadingA } = useExperimentDatasetExamples(
+    experimentIdA,
+    datasetId
+  );
+  const { data: examplesB, isLoading: loadingB } = useExperimentDatasetExamples(
+    experimentIdB,
+    datasetId
+  );
 
   const pairs: ExampleScorePair[] = useMemo(() => {
     if (!examplesA?.examples || !examplesB?.examples) return [];
@@ -516,26 +524,26 @@ const clickableRowClass = css`
   }
 `;
 
-export const CompareRunsPage: React.FC = () => {
+export const CompareExperimentsPage: React.FC = () => {
   const history = useHistory();
   const { search } = useLocation();
   const { euiTheme } = useEuiTheme();
 
   const params = useMemo(() => new URLSearchParams(search), [search]);
-  const runIdA = params.get('runA') ?? '';
-  const runIdB = params.get('runB') ?? '';
+  const experimentIdA = params.get('experimentA') ?? '';
+  const experimentIdB = params.get('experimentB') ?? '';
 
-  const { data, isLoading, error, refetch } = useCompareRuns(runIdA, runIdB);
-  const { data: runDataA } = useEvaluationRun(runIdA);
-  const { data: runDataB } = useEvaluationRun(runIdB);
+  const { data, isLoading, error, refetch } = useCompareExperiments(experimentIdA, experimentIdB);
+  const { data: experimentDataA } = useEvaluationExperiment(experimentIdA);
+  const { data: experimentDataB } = useEvaluationExperiment(experimentIdB);
 
   const isNewerA = useMemo(() => {
-    if (!runDataA?.timestamp || !runDataB?.timestamp) return undefined;
-    const tsA = new Date(runDataA.timestamp).getTime();
-    const tsB = new Date(runDataB.timestamp).getTime();
+    if (!experimentDataA?.timestamp || !experimentDataB?.timestamp) return undefined;
+    const tsA = new Date(experimentDataA.timestamp).getTime();
+    const tsB = new Date(experimentDataB.timestamp).getTime();
     if (tsA === tsB) return undefined;
     return tsA > tsB;
-  }, [runDataA?.timestamp, runDataB?.timestamp]);
+  }, [experimentDataA?.timestamp, experimentDataB?.timestamp]);
 
   const [flyoutState, setFlyoutState] = useState<{
     datasetId: string;
@@ -711,14 +719,16 @@ export const CompareRunsPage: React.FC = () => {
     [firstRowByDataset, isGroupedByDataset]
   );
 
-  if (!runIdA || !runIdB) {
+  if (!experimentIdA || !experimentIdB) {
     return (
       <EuiPageSection paddingSize="none" css={{ paddingTop: euiTheme.size.l }}>
         <EuiEmptyPrompt
           iconType="compareArrows"
-          title={<h2>{i18n.MISSING_RUN_IDS_TITLE}</h2>}
-          body={<p>{i18n.MISSING_RUN_IDS_BODY}</p>}
-          actions={[<EuiButton onClick={() => history.push('/')}>{i18n.BACK_TO_RUNS}</EuiButton>]}
+          title={<h2>{i18n.MISSING_EXPERIMENT_IDS_TITLE}</h2>}
+          body={<p>{i18n.MISSING_EXPERIMENT_IDS_BODY}</p>}
+          actions={[
+            <EuiButton onClick={() => history.push('/')}>{i18n.BACK_TO_EXPERIMENTS}</EuiButton>,
+          ]}
         />
       </EuiPageSection>
     );
@@ -760,18 +770,22 @@ export const CompareRunsPage: React.FC = () => {
 
       <EuiFlexGroup gutterSize="m" responsive={false} alignItems="center">
         <EuiFlexItem>
-          <RunHeader label={i18n.RUN_A_LABEL} runId={runIdA} isNewer={isNewerA} />
+          <ExperimentHeader
+            label={i18n.EXPERIMENT_A_LABEL}
+            experimentId={experimentIdA}
+            isNewer={isNewerA}
+          />
         </EuiFlexItem>
         <EuiFlexItem grow={false}>
-          <EuiToolTip content={i18n.SWAP_RUNS_LABEL} disableScreenReaderOutput>
+          <EuiToolTip content={i18n.SWAP_EXPERIMENTS_LABEL} disableScreenReaderOutput>
             <EuiButtonIcon
               iconType="merge"
-              aria-label={i18n.SWAP_RUNS_LABEL}
+              aria-label={i18n.SWAP_EXPERIMENTS_LABEL}
               onClick={() =>
                 history.replace({
                   search: new URLSearchParams({
-                    runA: runIdB,
-                    runB: runIdA,
+                    experimentA: experimentIdB,
+                    experimentB: experimentIdA,
                   }).toString(),
                 })
               }
@@ -779,9 +793,9 @@ export const CompareRunsPage: React.FC = () => {
           </EuiToolTip>
         </EuiFlexItem>
         <EuiFlexItem>
-          <RunHeader
-            label={i18n.RUN_B_LABEL}
-            runId={runIdB}
+          <ExperimentHeader
+            label={i18n.EXPERIMENT_B_LABEL}
+            experimentId={experimentIdB}
             isNewer={isNewerA !== undefined ? !isNewerA : undefined}
           />
         </EuiFlexItem>
@@ -875,7 +889,7 @@ export const CompareRunsPage: React.FC = () => {
               title={<h3>{i18n.NO_RESULTS_TITLE}</h3>}
               body={<p>{i18n.NO_RESULTS_BODY}</p>}
               actions={[
-                <EuiButton onClick={() => history.push('/')}>{i18n.BACK_TO_RUNS}</EuiButton>,
+                <EuiButton onClick={() => history.push('/')}>{i18n.BACK_TO_EXPERIMENTS}</EuiButton>,
               ]}
             />
           ) : (
@@ -903,8 +917,8 @@ export const CompareRunsPage: React.FC = () => {
 
       {flyoutState && (
         <ExampleDrilldownFlyout
-          runIdA={runIdA}
-          runIdB={runIdB}
+          experimentIdA={experimentIdA}
+          experimentIdB={experimentIdB}
           datasetId={flyoutState.datasetId}
           datasetName={flyoutState.datasetName}
           evaluatorName={flyoutState.evaluatorName}
