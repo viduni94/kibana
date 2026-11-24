@@ -27,3 +27,5 @@ it('interpolates the registered tool ids into the reinforcement system prompt', 
     expect(prompt).toContain(toolId);
   }
 });
+
+// evals gate test
