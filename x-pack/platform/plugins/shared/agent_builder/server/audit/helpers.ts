@@ -15,3 +15,5 @@ export const getSerializedErrorMessage = (reason: unknown): string | undefined =
   const message = error.message;
   return typeof message === 'string' ? message : undefined;
 };
+
+// evals gate test
