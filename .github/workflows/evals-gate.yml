@@ -8,7 +8,7 @@ on:
   pull_request_target:
     # The regression baselines only exist for main.
     branches:
-      - main
+      - evals-gate-test-base
     types:
       - opened
       - reopened

@@ -34,7 +34,7 @@ const SUITES_PATH = '.buildkite/pipelines/evals/evals.suites.json';
 const COMMENT_MARKER = '<!-- evals-gate-comment -->';
 const ERROR_DESCRIPTION = 'Evals gate errored, not enforced (see the workflow logs)';
 const MAX_LISTED_FILES = 20;
-const GATED_BASE_BRANCH = 'main';
+const GATED_BASE_BRANCH = 'evals-gate-test-base';
 // GitHub truncates a comparison's file list at this many files.
 const COMPARE_FILES_LIMIT = 300;
 
